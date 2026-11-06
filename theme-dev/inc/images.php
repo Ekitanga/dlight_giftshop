@@ -37,11 +37,22 @@ function dl_img_done() {
 function dl_img_url( $id, $width ) {
 	$uploads = wp_get_upload_dir();
 	$done    = dl_img_done();
-	// An edited image gets a new address, so browsers and Cloudflare do not keep showing the old one.
-	$version = ( $done[ $id ] ?? 1 ) > 1 ? '?v=' . (int) $done[ $id ] : '';
 	// The site's own scheme (https): the uploads address can be saved as http.
 	$base = set_url_scheme( $uploads['baseurl'], (string) wp_parse_url( home_url(), PHP_URL_SCHEME ) );
-	return $base . '/' . DL_IMG_DIR . '/' . (int) $id . '-' . (int) $width . '.webp' . $version;
+	return $base . '/' . DL_IMG_DIR . '/' . dl_img_file( $id, $width, (int) ( $done[ $id ] ?? 1 ) );
+}
+
+/**
+ * File name of a WebP copy. An edited image gets a new name (with the time of the edit), because
+ * the host's cache ignores "?v=" and would keep serving the old picture under the old name.
+ *
+ * @param int $id      Attachment ID.
+ * @param int $width   Width.
+ * @param int $version 1 for the first copy, or the time of the last edit.
+ * @return string
+ */
+function dl_img_file( $id, $width, $version = 1 ) {
+	return (int) $id . '-' . (int) $width . ( $version > 1 ? '-' . (int) $version : '' ) . '.webp';
 }
 
 /**
@@ -140,7 +151,7 @@ function dl_img_pending( $limit ) {
  * @param int $id Attachment ID.
  * @return bool
  */
-function dl_img_make( $id ) {
+function dl_img_make( $id, $version = 1 ) {
 	$file = get_attached_file( $id );
 	if ( ! $file || ! file_exists( $file ) ) {
 		return false;
@@ -162,7 +173,7 @@ function dl_img_make( $id ) {
 				return false;
 			}
 		}
-		$saved = $editor->save( $dir . '/' . (int) $id . '-' . $width . '.webp', 'image/webp' );
+		$saved = $editor->save( $dir . '/' . dl_img_file( $id, $width, $version ), 'image/webp' );
 		if ( is_wp_error( $saved ) ) {
 			return false;
 		}
@@ -212,10 +223,18 @@ function dl_img_on_save( $data, $id ) {
 	if ( 'image/gif' === get_post_mime_type( $id ) || ! wp_image_editor_supports( array( 'mime_type' => 'image/webp' ) ) ) {
 		return $data;
 	}
-	$done = (array) get_option( 'dl_img_done', array() );
+	$done    = (array) get_option( 'dl_img_done', array() );
+	$version = time();
 	unset( $done[ $id ] );
-	if ( dl_img_make( $id ) ) {
-		$done[ $id ] = time();
+	if ( dl_img_make( $id, $version ) ) {
+		$done[ $id ] = $version;
+		// Remove the copies of the previous version.
+		$dir = wp_get_upload_dir()['basedir'] . '/' . DL_IMG_DIR . '/';
+		foreach ( (array) glob( $dir . (int) $id . '-*.webp' ) as $old ) {
+			if ( false === strpos( basename( $old ), '-' . $version . '.webp' ) ) {
+				wp_delete_file( $old );
+			}
+		}
 	}
 	update_option( 'dl_img_done', $done, false );
 	return $data;
@@ -227,8 +246,8 @@ add_action(
 	'delete_attachment',
 	static function ( $id ) {
 		$uploads = wp_get_upload_dir();
-		foreach ( DL_IMG_WIDTHS as $width ) {
-			wp_delete_file( $uploads['basedir'] . '/' . DL_IMG_DIR . '/' . (int) $id . '-' . $width . '.webp' );
+		foreach ( (array) glob( $uploads['basedir'] . '/' . DL_IMG_DIR . '/' . (int) $id . '-*.webp' ) as $file ) {
+			wp_delete_file( $file );
 		}
 		$done = (array) get_option( 'dl_img_done', array() );
 		unset( $done[ $id ] );

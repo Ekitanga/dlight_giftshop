@@ -36,7 +36,8 @@ do_action( 'woocommerce_before_single_product' );
 		<div class="dl-gallery__main" id="dl-gallery-main" tabindex="0" aria-label="Product images">
 			<?php
 			foreach ( $images as $i => $image_id ) {
-				echo '<figure class="dl-gallery__item" id="dl-img-' . (int) $i . '">';
+				$dl_full = wp_get_attachment_url( $image_id ); // The original upload, sharpest for zooming.
+				echo '<figure class="dl-gallery__item" id="dl-img-' . (int) $i . '"' . ( $dl_full ? ' data-full="' . esc_url( $dl_full ) . '"' : '' ) . '>';
 				echo wp_get_attachment_image( // phpcs:ignore WordPress.Security.EscapeOutput
 					$image_id,
 					'woocommerce_single',
@@ -173,3 +174,10 @@ do_action( 'woocommerce_before_single_product' );
 
 <?php
 do_action( 'woocommerce_after_single_product' );
+?>
+
+<dialog class="dl-zoom" id="dl-zoom" aria-label="Photo, zoomed">
+	<button type="button" class="dl-zoom__close js-zoom-close" aria-label="Close">&times;</button>
+	<div class="dl-zoom__stage js-zoom-stage"><img alt="" decoding="async"></div>
+	<p class="dl-zoom__hint">Tap the photo to zoom in or out</p>
+</dialog>

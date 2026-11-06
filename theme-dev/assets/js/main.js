@@ -341,3 +341,34 @@
 		}).observe(target);
 	})();
 })();
+
+/* Photo zoom on product pages: tap a photo to see it full size; tap again to zoom in and look around. */
+(function () {
+	'use strict';
+	var dlg = document.getElementById('dl-zoom');
+	if (!dlg || typeof dlg.showModal !== 'function') { return; }
+	var stage = dlg.querySelector('.js-zoom-stage'), img = stage.querySelector('img');
+	document.addEventListener('click', function (e) {
+		var fig = e.target.closest('.dl-gallery__item');
+		if (fig && e.target.tagName === 'IMG') {
+			var small = fig.querySelector('img');
+			img.src = fig.dataset.full || small.currentSrc || small.src;
+			img.alt = small.alt || '';
+			stage.classList.remove('is-zoomed');
+			dlg.showModal();
+			return;
+		}
+		if (e.target.closest('.js-zoom-close') || e.target === dlg) { dlg.close(); return; }
+		if (e.target === img) {
+			var r = img.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+			stage.classList.toggle('is-zoomed');
+			if (stage.classList.contains('is-zoomed')) {
+				requestAnimationFrame(function () {
+					stage.scrollLeft = fx * stage.scrollWidth - stage.clientWidth / 2;
+					stage.scrollTop = fy * stage.scrollHeight - stage.clientHeight / 2;
+				});
+			}
+		}
+	});
+	dlg.addEventListener('close', function () { img.removeAttribute('src'); });
+})();

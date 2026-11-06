@@ -20,6 +20,8 @@ define( 'DL_MAP', 'https://www.google.com/maps/search/?api=1&query=' . rawurlenc
 require DL_DIR . '/inc/data.php';
 require DL_DIR . '/inc/setup.php';
 require DL_DIR . '/inc/shop.php';
+require DL_DIR . '/inc/checkout.php';
+require DL_DIR . '/inc/emails.php';
 require DL_DIR . '/inc/seo.php';
 require DL_DIR . '/inc/pages.php';
 require DL_DIR . '/inc/images.php';
