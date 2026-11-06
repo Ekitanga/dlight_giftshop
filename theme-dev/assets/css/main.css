@@ -501,6 +501,9 @@ ul.wc_payment_methods { list-style: none; margin: 0 0 14px; padding: 0; border-t
 .dl-option__price { font-weight: 700; white-space: nowrap; }
 .dl-free { color: #0d7038; }
 .dl-option__note { color: var(--muted); font-size: 13.5px; line-height: 1.4; }
+.dl-option__alert { display: block; margin-top: 8px; padding: 8px 10px; border-left: 3px solid #d99a0b; border-radius: 6px; background: #fff6e0; color: #5c4300; font-size: 13.5px; line-height: 1.45; }
+.dl-option__alert b { color: #3d2c00; }
+.woocommerce-checkout-review-order-table tr.fee td { color: #0d7038; font-weight: 600; }
 .dl-delivery__none { margin: 0 0 12px; color: var(--muted); }
 .dl-pickup-note { margin: 0 0 4px; padding: 10px 12px; background: var(--soft); border-left: 3px solid var(--gold); border-radius: 6px; font-size: 14.5px; }
 .dl-note-toggle { margin-top: 2px; }

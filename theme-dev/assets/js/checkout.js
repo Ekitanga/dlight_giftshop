@@ -47,7 +47,7 @@
 			show('#billing_address_1_field', !pickup);
 			mark('#billing_dl_area_field', !pickup && nairobi);
 			mark('#billing_city_field', !pickup && !nairobi);
-			mark('#billing_address_1_field', !pickup && nairobi);
+			mark('#billing_address_1_field', false);
 			setLabel('#billing_city_field', 'Town in ' + name);
 			setLabel('#billing_address_1_field', nairobi ? 'Building, street or landmark' : 'Nearest Speedaf office or landmark');
 			$('.dl-pickup-note').prop('hidden', !pickup);
@@ -64,6 +64,7 @@
 				if (!nairobi && /^\s*nairobi\s*$/i.test(town.val() || '')) { town.val(''); }
 				var ex = (TOWNS[county] || []).slice(0, 2).join(', ');
 				town.attr('placeholder', ex ? 'e.g. ' + ex : 'Start typing your town');
+				$('#billing_address_1').attr('placeholder', nairobi ? 'e.g. Kilimani, Argwings Kodhek Rd, Silver Court' : 'e.g. Speedaf office in ' + ((TOWNS[county] || [])[0] || 'your town'));
 				lastCounty = county;
 			}
 
@@ -81,5 +82,7 @@
 		setTimeout(refresh, 0);
 		$(document.body).trigger('update_checkout');
 	});
+	// Switching between M-Pesa (2% off) and pay on delivery changes the total.
+	$(document).on('change', 'input[name="payment_method"]', function () { $(document.body).trigger('update_checkout'); });
 	$(refresh);
 })(window.jQuery);

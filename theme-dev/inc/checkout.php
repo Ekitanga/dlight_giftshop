@@ -149,7 +149,7 @@ function dl_delivery_options_html() {
 			$note  = 'Brought to your door. We call you to agree a delivery time.';
 		} else {
 			$title = 'Outside Nairobi via Speedaf';
-			$note  = 'Sent by Speedaf to the office nearest you. Speedaf\'s parcel fee is paid to Speedaf before delivery.';
+			$note  = 'Sent by Speedaf to the Speedaf office nearest you.<span class="dl-option__alert"><b>Please note:</b> Speedaf\'s own parcel fee is separate. You pay it to Speedaf before delivery, and we will send you the details by SMS or WhatsApp.</span>';
 		}
 		$input_id = 'shipping_method_0_' . sanitize_title( $id );
 		$html    .= sprintf(
@@ -237,11 +237,9 @@ add_action(
 			return;
 		}
 		if ( DL_NAIROBI === ( $data['billing_state'] ?? '' ) ) {
+			// The area is needed; the building or landmark is optional (we confirm it on the phone).
 			if ( empty( $data['billing_dl_area'] ) ) {
 				$errors->add( 'dl_area', 'Please choose your <strong>area in Nairobi</strong>.' );
-			}
-			if ( empty( $data['billing_address_1'] ) ) {
-				$errors->add( 'dl_address', 'Please tell us your <strong>building, street or a landmark</strong>, so the rider can find you.' );
 			}
 		} elseif ( empty( $data['billing_city'] ) ) {
 			$errors->add( 'dl_town', 'Please enter your <strong>town</strong>, so we send your parcel to the right Speedaf office.' );
@@ -510,5 +508,80 @@ add_filter(
 		return $args;
 	},
 	10,
+	2
+);
+
+// Delivery, not pickup, is the default choice; a customer who picked pickup keeps it.
+add_filter(
+	'woocommerce_shipping_chosen_method',
+	static function ( $default, $rates ) {
+		if ( dl_is_pickup( $default ) ) {
+			foreach ( array_keys( (array) $rates ) as $id ) {
+				if ( ! dl_is_pickup( $id ) ) {
+					return $id;
+				}
+			}
+		}
+		return $default;
+	},
+	10,
+	2
+);
+
+/*
+ * M-Pesa prepay discount: the M-Pesa option has always offered 2% off for paying upfront.
+ * It is now applied automatically when M-Pesa is chosen, and shown in the totals.
+ * Set DL_MPESA_DISCOUNT to 0 to switch it off.
+ */
+const DL_MPESA_DISCOUNT = 2;
+
+/**
+ * The payment method being used at checkout (M-Pesa is first, so it is the default).
+ *
+ * @return string
+ */
+function dl_checkout_payment_method() {
+	// phpcs:ignore WordPress.Security.NonceVerification.Missing -- read only; WooCommerce verifies the nonce.
+	if ( isset( $_POST['payment_method'] ) ) {
+		return sanitize_key( wp_unslash( $_POST['payment_method'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	}
+	$chosen = WC()->session ? (string) WC()->session->get( 'chosen_payment_method' ) : '';
+	if ( $chosen ) {
+		return $chosen;
+	}
+	$gateways = WC()->payment_gateways() ? WC()->payment_gateways()->get_available_payment_gateways() : array();
+	return isset( $gateways['mpesa'] ) ? 'mpesa' : (string) key( $gateways );
+}
+
+add_action(
+	'woocommerce_cart_calculate_fees',
+	static function ( $cart ) {
+		if ( DL_MPESA_DISCOUNT <= 0 || ( is_admin() && ! wp_doing_ajax() ) ) {
+			return;
+		}
+		$on_checkout = ( function_exists( 'is_checkout' ) && is_checkout() ) || ( wp_doing_ajax() && isset( $_GET['wc-ajax'] ) && in_array( $_GET['wc-ajax'], array( 'update_order_review', 'checkout' ), true ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! $on_checkout || 'mpesa' !== dl_checkout_payment_method() ) {
+			return;
+		}
+		$items = (float) $cart->get_subtotal() - (float) $cart->get_discount_total();
+		$off   = floor( $items * DL_MPESA_DISCOUNT / 100 );
+		if ( $off > 0 ) {
+			$cart->add_fee( 'M-Pesa discount (' . DL_MPESA_DISCOUNT . '%)', -$off, false );
+		}
+	}
+);
+
+// The M-Pesa option says what the customer saves, in shillings.
+add_filter(
+	'woocommerce_gateway_description',
+	static function ( $description, $id ) {
+		if ( 'mpesa' === $id && DL_MPESA_DISCOUNT > 0 && WC()->cart ) {
+			$items = (float) WC()->cart->get_subtotal() - (float) WC()->cart->get_discount_total();
+			$off   = floor( $items * DL_MPESA_DISCOUNT / 100 );
+			return 'Pay now with M-Pesa and save ' . DL_MPESA_DISCOUNT . '%' . ( $off > 0 ? ' (' . wp_strip_all_tags( wc_price( $off ) ) . ')' : '' ) . '. We send a payment request to your phone.';
+		}
+		return $description;
+	},
+	20,
 	2
 );
