@@ -1,0 +1,109 @@
+/* Dlight Shopping Assistant. Sits under the cart drawer, so adding to cart stays visible. */
+.dla { --gold: #c0a16b; --gold-b: #f0d9a8; --gold-d: #7d6233; --line: #e7e3db; --soft: #f7f5f1; --muted: #6a655d; position: fixed; right: 18px; bottom: 18px; z-index: 66; display: flex; flex-direction: column; width: min(420px, calc(100vw - 36px)); height: min(680px, calc(100vh - 36px)); overflow: hidden; border: 1px solid var(--gold); border-radius: 14px; background: #fff; color: #161412; font: 400 15px/1.45 Jost, system-ui, -apple-system, "Segoe UI", sans-serif; box-shadow: 0 24px 60px rgba(0, 0, 0, .35); animation: dla-in .2s ease-out; }
+.dla[hidden] { display: none; }
+.dla *, .dla *::before, .dla *::after { box-sizing: border-box; }
+.dla svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+@keyframes dla-in { from { opacity: 0; transform: translateY(12px); } }
+.dla__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.dla__head { flex: none; display: flex; align-items: center; gap: 10px; padding: 9px 6px 9px 14px; background: #000; color: var(--gold-b); }
+.dla__mark { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--gold); border-radius: 50%; font: 700 13px Georgia, serif; }
+.dla__title { flex: 1; display: grid; line-height: 1.2; }
+.dla__title strong { font: 700 17px "Playfair Display", Georgia, serif; }
+.dla__title small { color: #d8d3c9; font-size: 12px; }
+.dla__head button { display: grid; place-items: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; }
+.dla__head button:hover { background: #231c15; }
+
+.dla__log { flex: 1; min-height: 0; padding: 6px 12px 14px; overflow-y: auto; overscroll-behavior: contain; background: var(--soft); scroll-behavior: smooth; }
+.dla__turn { padding: 10px 0 12px; border-bottom: 1px solid #ebe6dc; }
+.dla__turn:last-child { border-bottom: 0; }
+.dla__turn.is-old { opacity: .82; }
+.dla__turn.is-old .dla__msg--bot > p { font-size: 14px; }
+.dla__context { flex: none; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding: 8px 12px; overflow-x: auto; scrollbar-width: none; white-space: nowrap; border-bottom: 1px solid var(--line); background: #fff; }
+.dla__context[hidden] { display: none; }
+.dla__ctxlabel { flex: none; color: var(--muted); font-size: 12.5px; }
+.dla__context::-webkit-scrollbar { display: none; }
+.dla__pill { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 2px 10px; border: 0; border-radius: 15px; background: #000; color: var(--gold-b); font: 500 12.5px/1.2 inherit; font-family: inherit; cursor: pointer; }
+.dla__pill span { font-size: 15px; line-height: 1; }
+.dla__pill:hover { background: #2a2219; }
+.dla__expand { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 15px; background: #fff; color: var(--gold-d); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.dla__help { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--gold); border-radius: 10px; background: #fffaf0; }
+.dla__help p { flex: 1 1 100%; margin: 0 !important; font-size: 14px; }
+.dla__wa, .dla__ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border-radius: 19px; font-family: inherit; font-size: 13.5px; font-weight: 600; text-decoration: none; cursor: pointer; }
+.dla__wa { border: 0; background: #0d7038; color: #fff; }
+.dla__wa:hover { background: #0a5a2c; }
+.dla__ghost { border: 1px solid #000; background: #fff; color: #000; }
+.dla__ghost:hover { background: #000; color: #fff; }
+.dla__lead { display: grid; gap: 8px; margin-top: 10px; padding: 12px; border: 1px solid var(--gold); border-radius: 10px; background: #fff; }
+.dla__leadtitle { margin: 0 !important; font-weight: 600; }
+.dla__lead label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.dla__lead label > span { display: block; }
+.dla__lead label small { font-weight: 400; color: var(--muted); }
+.dla__lead label b { color: #a4161a; }
+.dla__lead input { height: 42px; padding: 0 10px; border: 1px solid #a9a397; border-radius: 6px; font: inherit; font-size: 16px; font-weight: 400; }
+.dla__lead input[readonly] { background: var(--soft); }
+.dla__lead input:focus { outline: 2px solid var(--gold-d); outline-offset: 0; }
+.dla__hp { position: absolute !important; left: -9999px !important; width: 1px; height: 1px; opacity: 0; }
+.dla__consent { margin: 0 !important; color: var(--muted); font-size: 12px; }
+.dla__consent a { color: inherit; }
+.dla__leadbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.dla__send { min-height: 40px; padding: 0 16px; border: 0; border-radius: 20px; background: #000; color: var(--gold-b); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.dla__send:disabled { opacity: .5; }
+.dla__err { margin: 0 !important; color: #a4161a; font-size: 13px; }
+.dla__wa-mini { color: #0d7038; font-weight: 600; }
+.dla__msg { margin-bottom: 8px; }
+.dla__msg p { margin: 0 0 6px; overflow-wrap: anywhere; }
+.dla__msg p:last-of-type { margin-bottom: 0; }
+.dla__msg--me { max-width: 86%; margin-left: auto; padding: 8px 12px; border-radius: 14px 14px 3px 14px; background: #000; color: #fff; }
+.dla__msg--bot > p { max-width: 94%; width: fit-content; padding: 9px 12px; border: 1px solid var(--line); border-radius: 14px 14px 14px 3px; background: #fff; }
+.dla__msg--bot > .dla__bubble { max-width: 94%; width: fit-content; margin: 0 0 6px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 14px 14px 14px 3px; background: #fff; }
+.dla__bubble p { margin: 0 0 4px; }
+.dla__bubble ul { margin: 0; padding-left: 18px; list-style: disc; }
+.dla__bubble li { padding-block: 1px; }
+.dla__typing { margin-top: 4px; display: flex; gap: 4px; width: fit-content; padding: 11px 13px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.dla__typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: dla-dot 1s infinite; }
+.dla__typing span:nth-child(2) { animation-delay: .15s; }
+.dla__typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes dla-dot { 50% { opacity: .3; transform: translateY(-2px); } }
+
+.dla__rail { display: flex; gap: 8px; margin: 8px -12px 0 0; padding: 2px 12px 8px 0; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.dla__card { flex: 0 0 158px; display: flex; flex-direction: column; gap: 5px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; scroll-snap-align: start; }
+.dla__img { display: block; aspect-ratio: 1; overflow: hidden; border-radius: 6px; background: #fff; }
+.dla__img img { width: 100%; height: 100%; object-fit: contain; }
+.dla__name { font-weight: 500; font-size: 13.5px; line-height: 1.25; color: inherit; text-decoration: none; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dla__name:hover { color: var(--gold-d); }
+.dla__why { margin: 0 !important; color: var(--muted); font-size: 12px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dla__price { margin: auto 0 0 !important; padding-top: 2px; font-size: 14.500px; line-height: 1.2; }
+.dla__price del { display: block; color: var(--muted); font-size: 12px; }
+.dla__add { display: flex; align-items: center; justify-content: center; min-height: 36px; border-radius: 5px; background: #000; color: #fff; font-weight: 600; font-size: 13px; text-decoration: none; }
+.dla__add:hover { background: var(--gold); color: #000; }
+
+.dla__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dla__chip { min-height: 36px; padding: 5px 12px; border: 1px solid var(--gold); border-radius: 18px; background: #fff; color: #161412; font-family: inherit; font-size: 13.5px; font-weight: 500; line-height: 1.2; text-align: left; cursor: pointer; transition: background .15s; }
+.dla__chip:hover { background: #f4ead8; }
+.dla__link { display: inline-block; margin-top: 6px; color: var(--gold-d); font-weight: 600; font-size: 14px; }
+
+.dla__tablewrap { margin-top: 8px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.dla__table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.3; }
+.dla__table th, .dla__table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.dla__table tr:last-child th, .dla__table tr:last-child td { border-bottom: 0; }
+.dla__table thead th { background: #000; color: var(--gold-b); font-weight: 600; }
+.dla__table tbody th { width: 24%; font-weight: 600; color: var(--muted); }
+
+.dla__form { flex: none; display: flex; gap: 6px; padding: 8px 10px 4px; border-top: 1px solid var(--line); background: #fff; }
+.dla__form input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; border: 1px solid #a9a397; border-radius: 8px; background: #fff; color: #161412; font: inherit; font-size: 16px; outline: 0; }
+.dla__form input:focus { border-color: var(--gold-d); box-shadow: 0 0 0 1px var(--gold-d); }
+.dla__form button { flex: none; display: grid; place-items: center; width: 46px; height: 44px; padding: 0; border: 0; border-radius: 8px; background: var(--gold); color: #000; cursor: pointer; }
+.dla__form button:hover { background: var(--gold-b); }
+.dla__note { flex: none; margin: 0; padding: 2px 12px 8px; background: #fff; color: var(--muted); font-size: 11.500px; line-height: 1.3; }
+
+.dla :focus-visible { outline: 2px solid var(--gold-d); outline-offset: 2px; }
+.dla__head :focus-visible { outline-color: var(--gold-b); }
+
+@media (max-width: 760px) {
+	.dla { inset: 0; width: 100%; height: 100dvh; max-height: none; border: 0; border-radius: 0; padding-bottom: env(safe-area-inset-bottom); }
+	html.dla-open { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.dla, .dla__typing span { animation: none; }
+}

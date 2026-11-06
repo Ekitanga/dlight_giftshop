@@ -1,0 +1,13 @@
+# Only the website's code is tracked. Everything else in this folder stays private:
+# database exports (customer data), the server archive, the copied site and its config keys,
+# local Docker settings and internal notes.
+/*
+!/.gitignore
+!/README.md
+!/theme-dev/
+!/assistant-dev/
+!/tools/
+*.sql
+*.log
+.env
+node_modules/
