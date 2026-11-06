@@ -317,3 +317,85 @@ add_filter(
 	10,
 	2
 );
+
+// The cart shows items and the total before delivery; delivery is chosen at checkout.
+add_filter( 'woocommerce_cart_ready_to_calc_shipping', static fn( $ready ) => function_exists( 'is_cart' ) && is_cart() ? false : $ready );
+
+/*
+ * M-Pesa payment page. The M-Pesa plugin's buttons and payment logic stay exactly as they are;
+ * this adds a clear card with the amount and three short steps, and hides the plugin's long text.
+ */
+add_action(
+	'woocommerce_receipt_mpesa',
+	static function ( $order_id ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+		$phone = dl_ke_phone( $order->get_billing_phone() );
+		$show  = $phone ? '0' . substr( $phone, 3, 3 ) . ' ' . substr( $phone, 6, 3 ) . ' ' . substr( $phone, 9 ) : $order->get_billing_phone();
+		?>
+		<div class="dl-mpay">
+			<p class="dl-mpay__brand"><span>M-PESA</span> Lipa na M-Pesa</p>
+			<h2 class="dl-mpay__amount">Pay <?php echo wp_kses_post( $order->get_formatted_order_total() ); ?></h2>
+			<p class="dl-mpay__meta">Order #<?php echo esc_html( $order->get_order_number() ); ?> &middot; payment request to <strong><?php echo esc_html( $show ); ?></strong></p>
+			<ol class="dl-mpay__steps">
+				<li>Tap <strong>Send M-Pesa request</strong>.</li>
+				<li>Enter your M-Pesa PIN on your phone.</li>
+				<li>When you get the M-Pesa message, tap <strong>I have paid</strong>.</li>
+			</ol>
+			<?php
+			// The plugin shows its buttons only on the page it redirects to after checkout. Coming from
+			// a "pay for this order" link, offer the way into that page.
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( ! isset( $_GET['transactionType'] ) || 'checkout' !== $_GET['transactionType'] ) {
+				echo '<p><a class="dl-mpay__start" href="' . esc_url( add_query_arg( array( 'transactionType' => 'checkout', 'order' => $order->get_id() ), $order->get_checkout_payment_url( true ) ) ) . '">Pay now</a></p>';
+			}
+			?>
+			<div class="dl-mpesa">
+		<?php
+	},
+	1
+);
+add_action(
+	'woocommerce_receipt_mpesa',
+	static function () {
+		?>
+			</div>
+			<p class="dl-mpay__help">No prompt on your phone? Check that you have enough M-Pesa balance, then tap Send M-Pesa request again. Need help? <a href="<?php echo esc_attr( dl_whatsapp_url( 'Hello Dlight Giftshop, I need help paying for my order.' ) ); ?>">WhatsApp us</a>.</p>
+		</div>
+		<script>
+		(function () {
+			var pay = document.getElementById('pay_btn'), done = document.getElementById('complete_btn');
+			if (pay) { pay.textContent = 'Send M-Pesa request'; pay.type = 'button'; }
+			if (done) { done.textContent = 'I have paid, complete my order'; done.type = 'button'; }
+		})();
+		</script>
+		<?php
+	},
+	99
+);
+
+// Thank-you page: the theme shows the order and next steps itself, so WooCommerce's long details
+// table and the repeated cash-on-delivery note are left out. Tracking hooks still run.
+add_action(
+	'woocommerce_before_thankyou',
+	static function () {
+		remove_action( 'woocommerce_thankyou', 'woocommerce_order_details_table', 10 );
+		$gateways = WC()->payment_gateways() ? WC()->payment_gateways()->payment_gateways() : array();
+		if ( isset( $gateways['cod'] ) ) {
+			remove_action( 'woocommerce_thankyou_cod', array( $gateways['cod'], 'thankyou_page' ) );
+		}
+	}
+);
+
+// "Delivery" reads better than "Shipping" on the thank-you page and in emails.
+add_filter(
+	'woocommerce_get_order_item_totals',
+	static function ( $rows ) {
+		if ( isset( $rows['shipping'] ) ) {
+			$rows['shipping']['label'] = 'Delivery:';
+		}
+		return $rows;
+	}
+);

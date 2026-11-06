@@ -57,6 +57,30 @@ function dl_order_whatsapp( $order, $text ) {
 	return dl_whatsapp_url( $text . ' (order #' . $order->get_order_number() . ')' );
 }
 
+/**
+ * What happens next for a new order: delivery, then payment. Used in emails and on the thank-you page.
+ *
+ * @param WC_Order $order Order.
+ * @return string[]
+ */
+function dl_order_next_steps( $order ) {
+	$how   = dl_order_delivery( $order );
+	$cod   = 'cod' === $order->get_payment_method();
+	$phone = $order->get_billing_phone();
+	$lines = array();
+	if ( 'pickup' === $how ) {
+		$lines[] = 'We are getting your order ready. We will call or WhatsApp you on ' . $phone . ' when it is ready to collect.';
+		$lines[] = 'Collect it at ' . DL_ADDRESS . ', Monday to Saturday, 8:30am to 7pm.';
+	} elseif ( 'nairobi' === $how ) {
+		$lines[] = 'We will call you on ' . $phone . ' to agree a delivery time to ' . dl_order_place( $order ) . '.';
+	} elseif ( 'courier' === $how ) {
+		$lines[] = 'We will send your order by Speedaf to ' . dl_order_place( $order ) . ', and share the parcel details with you on ' . $phone . '.';
+		$lines[] = 'Speedaf\'s parcel fee is paid to Speedaf before delivery.';
+	}
+	$lines[] = $cod ? ( 'pickup' === $how ? 'Pay when you collect, by M-Pesa or cash.' : 'Pay when your order arrives, by M-Pesa or cash.' ) : ( $order->get_date_paid() ? 'Your payment has been received. Thank you.' : 'Your order will be confirmed once payment is received.' );
+	return $lines;
+}
+
 // The customer's "what happens next", above the order details.
 add_action(
 	'woocommerce_email_before_order_table',
@@ -71,16 +95,7 @@ add_action(
 		switch ( $email->id ) {
 			case 'customer_processing_order':
 			case 'customer_on_hold_order':
-				if ( 'pickup' === $how ) {
-					$lines[] = 'We are getting your order ready. We will call or WhatsApp you on ' . $phone . ' when it is ready to collect.';
-					$lines[] = 'Collect it at ' . DL_ADDRESS . ', Monday to Saturday, 8:30am to 7pm.';
-				} elseif ( 'nairobi' === $how ) {
-					$lines[] = 'We will call you on ' . $phone . ' to agree a delivery time to ' . dl_order_place( $order ) . '.';
-				} elseif ( 'courier' === $how ) {
-					$lines[] = 'We will send your order by Speedaf to ' . dl_order_place( $order ) . ', and share the parcel details with you on ' . $phone . '.';
-					$lines[] = 'Speedaf\'s parcel fee is paid to Speedaf before delivery.';
-				}
-				$lines[] = $cod ? ( 'pickup' === $how ? 'Pay when you collect, by M-Pesa or cash.' : 'Pay when your order arrives, by M-Pesa or cash.' ) : ( $order->get_date_paid() ? 'Your payment has been received. Thank you.' : 'Your order will be confirmed once payment is received.' );
+				$lines = dl_order_next_steps( $order );
 				break;
 			case 'customer_completed_order':
 				$lines[] = 'pickup' === $how ? 'Thank you for collecting your order.' : ( 'courier' === $how ? 'Your order is on its way with Speedaf.' : 'Your order has been delivered.' );

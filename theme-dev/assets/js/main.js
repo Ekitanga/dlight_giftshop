@@ -372,3 +372,30 @@
 	});
 	dlg.addEventListener('close', function () { img.removeAttribute('src'); });
 })();
+
+/* Cart: + and - buttons, and quantities update by themselves (no "Update cart" button to find). */
+(function () {
+	'use strict';
+	var cart = document.querySelector('.dl-cart');
+	if (!cart) { return; }
+	cart.classList.add('is-auto');
+	var timer = null;
+	function update() {
+		clearTimeout(timer);
+		timer = setTimeout(function () {
+			var btn = document.querySelector('.woocommerce-cart-form button[name="update_cart"]');
+			if (btn) { btn.disabled = false; btn.removeAttribute('aria-disabled'); btn.click(); }
+		}, 700);
+	}
+	document.addEventListener('click', function (e) {
+		var b = e.target.closest('.js-qty');
+		if (!b) { return; }
+		var input = b.parentElement.querySelector('input.qty');
+		if (!input) { return; }
+		var min = parseFloat(input.min || 0), max = parseFloat(input.max) || 999;
+		input.value = Math.min(max, Math.max(min, (parseFloat(input.value) || 0) + parseFloat(b.dataset.step)));
+		if (window.jQuery) { window.jQuery(input).trigger('change'); }
+		update();
+	});
+	document.addEventListener('input', function (e) { if (e.target.matches('.woocommerce-cart-form input.qty')) { update(); } });
+})();
