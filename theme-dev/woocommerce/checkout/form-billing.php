@@ -44,6 +44,7 @@ $dl_print    = static function ( $keys ) use ( $dl_fields, $checkout ) {
 			// Any other billing fields added by plugins.
 			$dl_print( array_diff( array_keys( $dl_fields ), $dl_details, $dl_delivery, $dl_where ) );
 			?>
+			<datalist id="dl-towns"></datalist>
 		</div>
 	</section>
 

@@ -109,7 +109,7 @@ add_filter(
 			'priority' => 60,
 			'options'  => array( '' => 'Choose your area' ) + array_combine( dl_nairobi_areas(), dl_nairobi_areas() ) + array( 'Other' => 'Other area (write it below)' ),
 		);
-		$b['billing_city']       = array_merge( $b['billing_city'], array( 'label' => 'Town', 'placeholder' => 'e.g. Nakuru', 'required' => false, 'class' => array( 'form-row-wide', 'dl-row-town' ), 'priority' => 70 ) );
+		$b['billing_city']       = array_merge( $b['billing_city'], array( 'label' => 'Town', 'placeholder' => 'Start typing your town', 'required' => false, 'class' => array( 'form-row-wide', 'dl-row-town' ), 'priority' => 70, 'custom_attributes' => array( 'list' => 'dl-towns', 'autocomplete' => 'off' ) ) );
 		$b['billing_address_1']  = array_merge( $b['billing_address_1'], array( 'label' => 'Building, street or landmark', 'required' => false, 'class' => array( 'form-row-wide', 'dl-row-address' ), 'priority' => 80 ) );
 		$fields['billing']       = $b;
 
@@ -148,7 +148,7 @@ function dl_delivery_options_html() {
 			$title = 'Delivery within Nairobi';
 			$note  = 'Brought to your door. We call you to agree a delivery time.';
 		} else {
-			$title = 'Courier to your town';
+			$title = 'Outside Nairobi via Speedaf';
 			$note  = 'Sent by Speedaf to the office nearest you. Speedaf\'s parcel fee is paid to Speedaf before delivery.';
 		}
 		$input_id = 'shipping_method_0_' . sanitize_title( $id );
@@ -301,6 +301,8 @@ add_action(
 	static function () {
 		if ( is_checkout() && ! is_order_received_page() ) {
 			wp_enqueue_script( 'dlight-checkout', dl_asset_url( '/assets/js/checkout.js' ), array( 'jquery', 'wc-checkout' ), null, true );
+			$states = WC()->countries->get_states( 'KE' );
+			wp_add_inline_script( 'dlight-checkout', 'window.DL_TOWNS=' . wp_json_encode( dl_county_towns() ) . ';window.DL_COUNTIES=' . wp_json_encode( array_map( static fn( $n ) => str_replace( ' County', '', html_entity_decode( $n ) ), $states ) ) . ';', 'before' );
 			wp_enqueue_script( 'selectWoo' );
 			wp_enqueue_style( 'select2' );
 		}
@@ -362,7 +364,15 @@ add_action(
 	static function () {
 		?>
 			</div>
-			<p class="dl-mpay__help">No prompt on your phone? Check that you have enough M-Pesa balance, then tap Send M-Pesa request again. Need help? <a href="<?php echo esc_attr( dl_whatsapp_url( 'Hello Dlight Giftshop, I need help paying for my order.' ) ); ?>">WhatsApp us</a>.</p>
+			<div class="dl-mpay__till">
+				<p><strong>No prompt on your phone?</strong> Check your M-Pesa balance and tap Send M-Pesa request again. Or pay directly:</p>
+				<ol>
+					<li>Go to <strong>M-Pesa &rarr; Lipa na M-Pesa &rarr; Buy Goods and Services</strong>.</li>
+					<li>Till number <strong class="dl-mpay__tillno">8109502</strong> (DLIGHT GIFTSHOP).</li>
+					<li>Send us the M-Pesa message on WhatsApp and we will confirm your order.</li>
+				</ol>
+				<p><a class="dl-mpay__wa" href="<?php echo esc_attr( dl_whatsapp_url( 'Hello Dlight Giftshop, I have paid by till number 8109502 for my order. Here is my M-Pesa message:' ) ); ?>">Send the M-Pesa message on WhatsApp</a></p>
+			</div>
 		</div>
 		<script>
 		(function () {
@@ -398,4 +408,107 @@ add_filter(
 		}
 		return $rows;
 	}
+);
+
+/**
+ * Main towns in each county (WooCommerce county code), suggested as a customer types their town.
+ * They can still type any town.
+ *
+ * @return array<string,string[]>
+ */
+function dl_county_towns() {
+	return array(
+		'KE01' => array( 'Kabarnet', 'Eldama Ravine', 'Marigat', 'Mogotio', 'Kabartonjo' ),
+		'KE02' => array( 'Bomet', 'Sotik', 'Longisa', 'Mulot', 'Silibwet' ),
+		'KE03' => array( 'Bungoma', 'Webuye', 'Kimilili', 'Chwele', 'Sirisia', 'Malakisi' ),
+		'KE04' => array( 'Busia', 'Malaba', 'Nambale', 'Port Victoria', 'Funyula', 'Butula' ),
+		'KE05' => array( 'Iten', 'Kapsowar', 'Chepkorio', 'Tambach', 'Kamwosor' ),
+		'KE06' => array( 'Embu', 'Runyenjes', 'Siakago', 'Manyatta', 'Kiritiri' ),
+		'KE07' => array( 'Garissa', 'Dadaab', 'Masalani', 'Bura', 'Hulugho' ),
+		'KE08' => array( 'Homa Bay', 'Mbita', 'Oyugis', 'Kendu Bay', 'Ndhiwa', 'Rangwe' ),
+		'KE09' => array( 'Isiolo', 'Garbatulla', 'Merti', 'Kinna' ),
+		'KE10' => array( 'Kitengela', 'Ongata Rongai', 'Kajiado', 'Ngong', 'Kiserian', 'Namanga', 'Isinya', 'Loitokitok', 'Kimana' ),
+		'KE11' => array( 'Kakamega', 'Mumias', 'Malava', 'Butere', 'Lugari', 'Khayega', 'Shinyalu' ),
+		'KE12' => array( 'Kericho', 'Litein', 'Londiani', 'Kipkelion', 'Brooke' ),
+		'KE13' => array( 'Thika', 'Ruiru', 'Kiambu', 'Juja', 'Kikuyu', 'Limuru', 'Ruaka', 'Githurai 45', 'Kahawa Wendani', 'Kahawa Sukari', 'Banana', 'Gatundu', 'Karuri', 'Kiambaa', 'Lari' ),
+		'KE14' => array( 'Kilifi', 'Malindi', 'Watamu', 'Mtwapa', 'Mariakani', 'Kaloleni', 'Mazeras' ),
+		'KE15' => array( 'Kerugoya', 'Kutus', 'Sagana', 'Kagio', 'Wang\'uru', 'Kianyaga' ),
+		'KE16' => array( 'Kisii', 'Ogembo', 'Suneka', 'Keroka', 'Masimba', 'Nyamache' ),
+		'KE17' => array( 'Kisumu', 'Ahero', 'Maseno', 'Kombewa', 'Muhoroni', 'Awasi', 'Katito' ),
+		'KE18' => array( 'Kitui', 'Mwingi', 'Mutomo', 'Kabati', 'Kwa Vonza', 'Ikutha' ),
+		'KE19' => array( 'Ukunda', 'Diani', 'Kwale', 'Msambweni', 'Kinango', 'Lunga Lunga', 'Shimoni' ),
+		'KE20' => array( 'Nanyuki', 'Nyahururu', 'Rumuruti', 'Doldol', 'Kinamba', 'Lamuria' ),
+		'KE21' => array( 'Lamu', 'Mpeketoni', 'Witu', 'Mokowe', 'Faza' ),
+		'KE22' => array( 'Machakos', 'Athi River', 'Syokimau', 'Mlolongo', 'Kangundo', 'Tala', 'Matuu', 'Masii', 'Kathiani' ),
+		'KE23' => array( 'Wote', 'Emali', 'Mtito Andei', 'Kibwezi', 'Makindu', 'Sultan Hamud', 'Mbumbuni' ),
+		'KE24' => array( 'Mandera', 'El Wak', 'Rhamu', 'Takaba', 'Lafey' ),
+		'KE25' => array( 'Marsabit', 'Moyale', 'Laisamis', 'Sololo', 'North Horr' ),
+		'KE26' => array( 'Meru', 'Maua', 'Timau', 'Nkubu', 'Chuka Road', 'Mitunguu', 'Laare', 'Kianjai' ),
+		'KE27' => array( 'Migori', 'Rongo', 'Awendo', 'Kehancha', 'Isebania', 'Uriri', 'Muhuru Bay' ),
+		'KE28' => array( 'Mombasa CBD', 'Nyali', 'Bamburi', 'Likoni', 'Changamwe', 'Mtwapa', 'Kisauni', 'Mikindani', 'Shanzu' ),
+		'KE29' => array( 'Murang\'a', 'Kenol', 'Kangema', 'Maragua', 'Kandara', 'Kiriaini', 'Makuyu' ),
+		'KE30' => array(),
+		'KE31' => array( 'Nakuru', 'Naivasha', 'Gilgil', 'Molo', 'Njoro', 'Subukia', 'Mai Mahiu', 'Salgaa', 'Bahati', 'Rongai' ),
+		'KE32' => array( 'Kapsabet', 'Nandi Hills', 'Mosoriot', 'Kabiyet', 'Kobujoi' ),
+		'KE33' => array( 'Narok', 'Kilgoris', 'Ololulunga', 'Nairagie Ngare', 'Suswa', 'Emurua Dikirr' ),
+		'KE34' => array( 'Nyamira', 'Keroka', 'Nyansiongo', 'Ekerenyo', 'Magwagwa' ),
+		'KE35' => array( 'Ol Kalou', 'Njabini', 'Engineer', 'Ndaragwa', 'Ol Joro Orok', 'Mairo Inya' ),
+		'KE36' => array( 'Nyeri', 'Karatina', 'Othaya', 'Mukurweini', 'Naro Moru', 'Chaka', 'Endarasha' ),
+		'KE37' => array( 'Maralal', 'Baragoi', 'Wamba', 'Archers Post' ),
+		'KE38' => array( 'Siaya', 'Bondo', 'Ugunja', 'Yala', 'Usenge', 'Ukwala', 'Sega' ),
+		'KE39' => array( 'Voi', 'Wundanyi', 'Taveta', 'Mwatate', 'Maungu' ),
+		'KE40' => array( 'Hola', 'Garsen', 'Bura', 'Madogo', 'Kipini' ),
+		'KE41' => array( 'Chuka', 'Kathwana', 'Marimanti', 'Chogoria', 'Gatunga' ),
+		'KE42' => array( 'Kitale', 'Endebess', 'Kiminini', 'Saboti', 'Kwanza' ),
+		'KE43' => array( 'Lodwar', 'Kakuma', 'Lokichogio', 'Lokitaung', 'Kalokol' ),
+		'KE44' => array( 'Eldoret', 'Burnt Forest', 'Turbo', 'Moi\'s Bridge', 'Ziwa', 'Kesses' ),
+		'KE45' => array( 'Mbale', 'Luanda', 'Chavakali', 'Majengo', 'Kaimosi', 'Hamisi' ),
+		'KE46' => array( 'Wajir', 'Habaswein', 'Bute', 'Griftu', 'Tarbaj' ),
+		'KE47' => array( 'Kapenguria', 'Makutano', 'Chepareria', 'Sigor', 'Alale' ),
+	);
+}
+
+// Delivery options follow the county the customer has chosen (or saved), from the first moment the
+// page loads: a saved delivery address elsewhere must not show the wrong options.
+add_action(
+	'woocommerce_before_checkout_form',
+	static function () {
+		$customer = WC()->customer;
+		if ( ! $customer || ! WC()->cart ) {
+			return;
+		}
+		$state = $customer->get_billing_state() ? $customer->get_billing_state() : DL_NAIROBI;
+		if ( $customer->get_shipping_state() !== $state || 'KE' !== $customer->get_shipping_country() ) {
+			$customer->set_shipping_location( 'KE', $state, '', $customer->get_billing_city() );
+			$customer->save();
+			WC()->cart->calculate_shipping();
+			WC()->cart->calculate_totals();
+		}
+	},
+	1
+);
+
+// Fields that do not apply to the county or delivery choice start hidden, before any script runs.
+add_filter(
+	'woocommerce_form_field_args',
+	static function ( $args, $key ) {
+		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || ! in_array( $key, array( 'billing_dl_area', 'billing_city', 'billing_address_1' ), true ) ) {
+			return $args;
+		}
+		$customer = WC()->customer;
+		$state    = $customer && $customer->get_billing_state() ? $customer->get_billing_state() : DL_NAIROBI;
+		$pickup   = dl_is_pickup( dl_chosen_method() );
+		$nairobi  = DL_NAIROBI === $state;
+		$off      = $pickup || ( 'billing_dl_area' === $key && ! $nairobi ) || ( 'billing_city' === $key && $nairobi );
+		if ( $off ) {
+			$args['class'][] = 'dl-off';
+		}
+		if ( 'billing_city' === $key && ! $nairobi ) {
+			$states        = WC()->countries->get_states( 'KE' );
+			$args['label'] = 'Town in ' . str_replace( ' County', '', html_entity_decode( $states[ $state ] ?? '' ) );
+		}
+		return $args;
+	},
+	10,
+	2
 );

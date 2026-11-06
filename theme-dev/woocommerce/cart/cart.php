@@ -17,6 +17,10 @@ do_action( 'woocommerce_before_cart' ); ?>
 		<?php do_action( 'woocommerce_before_cart_table' ); ?>
 		<?php do_action( 'woocommerce_before_cart_contents' ); ?>
 
+		<div class="dl-cart__head">
+			<h2>Your bag &middot; <?php echo esc_html( WC()->cart->get_cart_contents_count() ); ?> <?php echo 1 === WC()->cart->get_cart_contents_count() ? 'item' : 'items'; ?></h2>
+			<a href="<?php echo esc_url( wc_get_page_permalink( 'shop' ) ); ?>">Continue shopping</a>
+		</div>
 		<ul class="dl-cart__list shop_table cart woocommerce-cart-form__contents">
 			<?php
 			foreach ( WC()->cart->get_cart() as $cart_item_key => $cart_item ) {
@@ -89,9 +93,9 @@ do_action( 'woocommerce_before_cart' ); ?>
 								$cart_item_key
 							);
 							?>
+							<span class="dl-cart__line product-subtotal"><?php echo apply_filters( 'woocommerce_cart_item_subtotal', WC()->cart->get_product_subtotal( $_product, $cart_item['quantity'] ), $cart_item, $cart_item_key ); // phpcs:ignore WordPress.Security.EscapeOutput ?></span>
 						</div>
 					</div>
-					<span class="dl-cart__line product-subtotal"><?php echo apply_filters( 'woocommerce_cart_item_subtotal', WC()->cart->get_product_subtotal( $_product, $cart_item['quantity'] ), $cart_item, $cart_item_key ); // phpcs:ignore WordPress.Security.EscapeOutput ?></span>
 				</li>
 				<?php
 			}
