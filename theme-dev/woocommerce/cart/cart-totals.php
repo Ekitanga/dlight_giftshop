@@ -41,7 +41,7 @@ defined( 'ABSPATH' ) || exit;
 		</tr>
 		<?php do_action( 'woocommerce_cart_totals_after_order_total' ); ?>
 	</table>
-	<p class="dl-cart__hint">Delivery within Nairobi KSh 350 &middot; courier to other towns KSh 400 &middot; free pickup at our shop in town.</p>
+	<p class="dl-cart__hint">Delivery within Nairobi KSh 350 &middot; Speedaf to other towns KSh 350 &middot; free pickup at our shop in town.</p>
 	<div class="wc-proceed-to-checkout">
 		<?php do_action( 'woocommerce_proceed_to_checkout' ); ?>
 	</div>

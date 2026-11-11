@@ -26,3 +26,6 @@ require DL_DIR . '/inc/seo.php';
 require DL_DIR . '/inc/pages.php';
 require DL_DIR . '/inc/images.php';
 require DL_DIR . '/inc/perf.php';
+require DL_DIR . '/inc/feed.php';
+require DL_DIR . '/inc/supplier-sync.php';
+require DL_DIR . '/inc/analytics.php';

@@ -117,13 +117,52 @@ $dl_cats = array(
 	</div>
 </section>
 
+<section class="dl-section dl-edit" aria-labelledby="edit-title">
+	<div class="dl-wrap">
+		<?php
+		$dl_edit = array(
+			'new'    => array( 'New Arrivals', dl_new_ids( 24 ), add_query_arg( 'orderby', 'date', $dl_shop ) ),
+			'value'  => array( 'Under KSh 5,000', dl_band_ids( 30, 1, 5000 ), add_query_arg( 'max_price', 5000, $dl_shop ) ),
+			'luxury' => array( 'Luxury Picks', dl_band_ids( 30, 20000 ), add_query_arg( 'min_price', 20000, $dl_shop ) ),
+		);
+		?>
+		<div class="dl-head dl-edit__head">
+			<h2 id="edit-title">Handpicked for You</h2>
+			<div class="dl-edit__tabs" role="tablist" aria-label="Handpicked for You">
+				<?php
+				$dl_first = true;
+				foreach ( $dl_edit as $dl_key => $dl_tab ) :
+					?>
+					<button type="button" class="dl-edit__tab" role="tab" id="edit-tab-<?php echo esc_attr( $dl_key ); ?>" aria-controls="edit-<?php echo esc_attr( $dl_key ); ?>" aria-selected="<?php echo $dl_first ? 'true' : 'false'; ?>" data-more="<?php echo esc_url( $dl_tab[2] ); ?>"><?php echo esc_html( $dl_tab[0] ); ?></button>
+					<?php
+					$dl_first = false;
+				endforeach;
+				?>
+			</div>
+			<a class="dl-more dl-edit__more" href="<?php echo esc_url( $dl_edit['new'][2] ); ?>">View all</a>
+		</div>
+		<?php
+		$dl_first = true;
+		foreach ( $dl_edit as $dl_key => $dl_tab ) :
+			?>
+			<div class="dl-grid dl-grid--5 dl-edit__panel dl-rotate" data-mix="1" role="tabpanel" id="edit-<?php echo esc_attr( $dl_key ); ?>" aria-labelledby="edit-tab-<?php echo esc_attr( $dl_key ); ?>"<?php echo $dl_first ? '' : ' data-later'; ?>>
+				<?php dl_cards( $dl_tab[1] ); ?>
+			</div>
+			<?php dl_rotate_script(); ?>
+			<?php
+			$dl_first = false;
+		endforeach;
+		?>
+	</div>
+</section>
+
 <section class="dl-section" aria-labelledby="bp-title">
 	<div class="dl-wrap">
 		<div class="dl-head">
 			<h2 id="bp-title">Best Selling Perfumes</h2>
 			<a class="dl-more" href="<?php echo esc_url( dl_cat_url( 'perfumes' ) ); ?>">View all</a>
 		</div>
-		<div class="dl-grid dl-grid--5"><?php dl_cards( dl_top_seller_ids( 10, 'perfumes' ) ); ?></div>
+		<div class="dl-grid dl-grid--5 dl-rotate"><?php dl_cards( dl_top_seller_ids( 20, 'perfumes' ) ); ?></div><?php dl_rotate_script(); ?>
 	</div>
 </section>
 
@@ -154,7 +193,7 @@ $dl_cats = array(
 			<h2 id="bw-title">Best Selling Watches</h2>
 			<a class="dl-more" href="<?php echo esc_url( dl_cat_url( 'watches' ) ); ?>">View all</a>
 		</div>
-		<div class="dl-grid dl-grid--5"><?php dl_cards( dl_top_seller_ids( 10, 'watches' ) ); ?></div>
+		<div class="dl-grid dl-grid--5 dl-rotate"><?php dl_cards( dl_top_seller_ids( 20, 'watches' ) ); ?></div><?php dl_rotate_script(); ?>
 	</div>
 </section>
 
@@ -199,16 +238,6 @@ $dl_cats = array(
 		<div class="dl-grid dl-grid--5 dl-finder__results" id="dl-finder-results" aria-live="polite"></div>
 		<a class="dl-btn dl-btn--gold dl-finder__all" id="dl-finder-all" href="<?php echo esc_url( $dl_shop ); ?>" hidden>See all</a>
 		<noscript><a class="dl-btn dl-btn--gold" href="<?php echo esc_url( $dl_shop ); ?>">Browse the shop</a></noscript>
-	</div>
-</section>
-
-<section class="dl-section" aria-labelledby="new-title">
-	<div class="dl-wrap">
-		<div class="dl-head">
-			<h2 id="new-title">New Arrivals</h2>
-			<a class="dl-more" href="<?php echo esc_url( add_query_arg( 'orderby', 'date', $dl_shop ) ); ?>">View all</a>
-		</div>
-		<div class="dl-grid dl-grid--5"><?php dl_cards( dl_new_ids( 10 ) ); ?></div>
 	</div>
 </section>
 

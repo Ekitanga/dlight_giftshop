@@ -125,6 +125,8 @@ do_action( 'woocommerce_before_single_product' );
 			</li>
 		</ul>
 
+		<?php dl_supplier_ref( $product ); ?>
+
 		<?php
 		// Stays for WooCommerce structured data and any plugin that hooks in here.
 		do_action( 'woocommerce_single_product_summary' );

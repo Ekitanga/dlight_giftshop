@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 get_header();
 ?>
 <div class="dl-wrap dl-page">
-	<h1 class="dl-page__title"><?php echo is_singular() ? esc_html( get_the_title() ) : esc_html( wp_strip_all_tags( get_the_archive_title() ) ); ?></h1>
+	<h1 class="dl-page__title"><?php echo is_singular() ? esc_html( get_the_title() ) : esc_html( is_home() ? 'Buying Guides' : wp_strip_all_tags( get_the_archive_title() ) ); ?></h1>
 	<?php
 	if ( is_singular() ) {
 		while ( have_posts() ) {

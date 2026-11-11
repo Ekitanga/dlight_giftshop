@@ -50,6 +50,7 @@ defined( 'ABSPATH' ) || exit;
 						<li><?php echo esc_html( $dl_line ); ?></li>
 					<?php endforeach; ?>
 				</ol>
+				<?php echo dl_speedaf_box( $order ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside. ?>
 				<p class="dl-thanks__actions">
 					<a class="dl-btn dl-btn--wa" href="<?php echo esc_attr( dl_order_whatsapp( $order, 'Hello Dlight Giftshop, I have a question about my order' ) ); ?>">Chat with us on WhatsApp</a>
 				</p>

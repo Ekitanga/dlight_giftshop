@@ -18,7 +18,7 @@ $dl_shop   = wc_get_page_permalink( 'shop' );
 			<p>Dlight Giftshop. Your one stop shop for perfumes and watches in Nairobi.</p>
 			<div class="dl-social">
 				<a href="https://www.instagram.com/dlightgiftshopofficial/" target="_blank" rel="noopener">Instagram</a>
-				<a href="https://www.facebook.com/Dlightgiftshop_Kenya-108544315194461/" target="_blank" rel="noopener">Facebook</a>
+				<a href="https://www.facebook.com/DlightGiftshopKe" target="_blank" rel="noopener">Facebook</a>
 			</div>
 		</div>
 		<div>

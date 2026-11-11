@@ -177,7 +177,9 @@ function dl_whatsapp_href( $text = '' ) {
 function dl_whatsapp_product_text( $product ) {
 	$name  = html_entity_decode( wp_strip_all_tags( $product->get_name() ), ENT_QUOTES, 'UTF-8' );
 	$price = html_entity_decode( wp_strip_all_tags( wc_price( wc_get_price_to_display( $product ) ) ), ENT_QUOTES, 'UTF-8' );
-	return "Hello Dlight Giftshop,\nI would like to order this item:\n\n*" . $name . "*\nPrice: " . $price . "\n" . $product->get_permalink() . "\n\nIs it available?";
+	// The supplier reference has letters and a dash (e.g. "Item ref: ELI-34480"), so it never reads like a price.
+	$ref = function_exists( 'dl_supplier_ref_code' ) ? dl_supplier_ref_code( $product )[0] : '';
+	return "Hello Dlight Giftshop,\nI would like to order this item:\n\n*" . $name . "*\nPrice: " . $price . ( '' !== $ref ? "\nItem ref: " . $ref : '' ) . "\n" . $product->get_permalink() . "\n\nIs it available?";
 }
 
 /**
@@ -289,4 +291,58 @@ function dl_cat_url( $slug ) {
  */
 function dl_logo_url() {
 	return DL_URI . '/assets/img/logo-dg.png';
+}
+
+/**
+ * In-stock products within a price band, newest first, alternating perfumes and watches.
+ * Used by the home page "Just in / Under KSh 5,000 / Luxury picks" tabs. Cached for 30 minutes.
+ *
+ * @param int      $limit How many.
+ * @param int      $min   Lowest price (inclusive).
+ * @param int|null $max   Highest price (inclusive), or null for no ceiling.
+ * @return int[]
+ */
+function dl_band_ids( $limit, $min, $max = null ) {
+	global $wpdb;
+	$key = 'dl_band_' . $limit . '_' . $min . '_' . ( null === $max ? 'x' : $max );
+	$ids = get_transient( $key );
+	if ( false !== $ids ) {
+		return $ids;
+	}
+	$lists = array();
+	foreach ( array( 'perfumes', 'watches' ) as $slug ) {
+		$term = get_term_by( 'slug', $slug, 'product_cat' );
+		if ( ! $term ) {
+			continue;
+		}
+		$cats    = array_map( 'intval', array_merge( array( $term->term_id ), get_term_children( $term->term_id, 'product_cat' ) ) );
+		$ceiling = null === $max ? '' : $wpdb->prepare( ' AND l.min_price <= %d', $max );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$lists[] = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT p.ID FROM {$wpdb->posts} p
+				JOIN {$wpdb->wc_product_meta_lookup} l ON l.product_id = p.ID
+				JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+				JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_cat'
+				WHERE p.post_type = 'product' AND p.post_status = 'publish' AND l.stock_status = 'instock'
+					AND l.min_price >= %d {$ceiling} AND tt.term_id IN (" . implode( ',', $cats ) . ')
+				ORDER BY p.post_date DESC, l.min_price ASC LIMIT %d',
+				$min,
+				$limit * 2
+			)
+		);
+	}
+	$out = array();
+	for ( $i = 0; count( $out ) < $limit && $i < $limit * 2; $i++ ) {
+		foreach ( $lists as $list ) {
+			if ( isset( $list[ $i ] ) && ! in_array( (int) $list[ $i ], $out, true ) && count( $out ) < $limit ) {
+				$product = wc_get_product( $list[ $i ] );
+				if ( $product && $product->is_visible() ) {
+					$out[] = (int) $list[ $i ];
+				}
+			}
+		}
+	}
+	set_transient( $key, $out, 30 * MINUTE_IN_SECONDS );
+	return $out;
 }

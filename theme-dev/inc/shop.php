@@ -327,3 +327,391 @@ function dl_pair_ids( $product ) {
 	}
 	return dl_top_seller_ids( 5, $is_watch ? 'perfumes' : 'watches' );
 }
+
+/*
+ * Tell Meta whenever a product's stock status changes.
+ * The Facebook plugin only listens for stock *quantity* changes and for edits made in the product
+ * editor. Our products are marked in stock / out of stock without counting quantities, so a status
+ * change made any other way (quick tools, imports, supplier stock sync) never reached the Meta
+ * catalogue, and ads kept showing sold-out watches as available. Queue those products for the
+ * plugin's own sync; it sends everything queued in one background job when the request ends.
+ */
+function dl_fb_queue_stock_sync( $product_id ) {
+	static $queued = array();
+	$product_id = (int) $product_id;
+	if ( ! $product_id || isset( $queued[ $product_id ] ) || ! function_exists( 'facebook_for_woocommerce' ) ) {
+		return;
+	}
+	$queued[ $product_id ] = true;
+	try {
+		facebook_for_woocommerce()->get_products_sync_handler()->create_or_update_products( array( $product_id ) );
+	} catch ( \Throwable $e ) {
+		// A Meta connection problem must never stop a stock change or an order.
+		error_log( 'Dlight: could not queue Meta stock sync for product ' . $product_id . ': ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions
+	}
+}
+add_action( 'woocommerce_product_set_stock_status', 'dl_fb_queue_stock_sync', 20 );
+add_action( 'woocommerce_variation_set_stock_status', 'dl_fb_queue_stock_sync', 20 );
+
+/*
+ * Run the Facebook plugin's waiting product-sync jobs on our regular cron.
+ * The plugin normally starts its background worker with a loopback request to this site, which
+ * the host rate-limits (HTTP 429), so jobs could sit in the queue for hours. Its cron health check
+ * fires on our 5-minute server cron; here we process the queue directly with the plugin's own
+ * public process_job() before that check runs. The plugin's own lock prevents double work.
+ */
+function dl_fb_run_sync_jobs() {
+	if ( ! function_exists( 'facebook_for_woocommerce' ) || get_transient( 'wc_facebook_background_product_sync_process_lock' ) || get_transient( 'dl_fb_jobs_running' ) ) {
+		return;
+	}
+	set_transient( 'dl_fb_jobs_running', 1, 4 * MINUTE_IN_SECONDS );
+	try {
+		$handler = facebook_for_woocommerce()->get_products_sync_background_handler();
+		foreach ( (array) $handler->get_jobs( array( 'status' => array( 'queued', 'processing' ) ) ) as $job ) {
+			$handler->process_job( $job );
+		}
+	} catch ( \Throwable $e ) {
+		error_log( 'Dlight: Meta product sync job failed: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions
+	}
+	delete_transient( 'dl_fb_jobs_running' );
+}
+add_action( 'wc_facebook_background_product_sync_cron', 'dl_fb_run_sync_jobs', 5 );
+
+/*
+ * Send visitors from a removed (duplicate) product to the copy we kept.
+ * The map lives in the 'dl_product_redirects' option: old URL path => product ID kept.
+ * It only acts on pages that would otherwise be "not found", so it never overrides a live page.
+ */
+add_action(
+	'template_redirect',
+	static function () {
+		if ( ! is_404() ) {
+			return;
+		}
+		$map = get_option( 'dl_product_redirects', array() );
+		if ( ! $map ) {
+			return;
+		}
+		$path = trailingslashit( (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '', PHP_URL_PATH ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		if ( isset( $map[ $path ] ) && 'publish' === get_post_status( (int) $map[ $path ] ) ) {
+			wp_safe_redirect( get_permalink( (int) $map[ $path ] ), 301 );
+			exit;
+		}
+	}
+);
+
+/*
+ * Default order for every category, brand page and product search:
+ * in-stock first, then the newest arrivals first, and within each day's arrivals the cheapest first.
+ * A customer can still choose another order from the "Sort by" menu.
+ */
+function dl_is_default_sort( $orderby ) {
+	return in_array( (string) $orderby, array( '', 'menu_order', 'relevance', 'dl_fresh' ), true );
+}
+add_filter(
+	'woocommerce_get_catalog_ordering_args',
+	static function ( $args, $orderby ) {
+		if ( dl_is_default_sort( $orderby ) ) {
+			$args['orderby']  = 'date';
+			$args['order']    = 'DESC';
+			$args['meta_key'] = '';
+			add_filter( 'posts_clauses', 'dl_fresh_clauses', 20, 2 );
+		}
+		return $args;
+	},
+	20,
+	2
+);
+add_filter( 'woocommerce_default_catalog_orderby', static fn() => 'dl_fresh' );
+
+/**
+ * SQL for the default order. Runs once, on the main product query only.
+ *
+ * @param array    $clauses Query clauses.
+ * @param WP_Query $query   Query.
+ * @return array
+ */
+function dl_fresh_clauses( $clauses, $query ) {
+	global $wpdb;
+	if ( ! $query->is_main_query() ) {
+		return $clauses;
+	}
+	remove_filter( 'posts_clauses', 'dl_fresh_clauses', 20 );
+	if ( false === strpos( $clauses['join'], 'dl_fresh_l' ) ) {
+		$clauses['join'] .= " LEFT JOIN {$wpdb->wc_product_meta_lookup} dl_fresh_l ON {$wpdb->posts}.ID = dl_fresh_l.product_id ";
+	}
+	$clauses['orderby'] = "(dl_fresh_l.stock_status = 'instock') DESC, DATE({$wpdb->posts}.post_date) DESC, dl_fresh_l.min_price ASC, {$wpdb->posts}.ID DESC";
+	return $clauses;
+}
+
+/*
+ * Supplier: a private product field for staff (replaces the public supplier tags such as "ET").
+ * Not visible to customers or search engines; shown as a column, filter and Quick Edit box in Products.
+ */
+add_action(
+	'init',
+	static function () {
+		register_taxonomy(
+			'dl_supplier',
+			'product',
+			array(
+				'labels'             => array(
+					'name'          => 'Suppliers',
+					'singular_name' => 'Supplier',
+					'menu_name'     => 'Suppliers',
+					'all_items'     => 'All suppliers',
+					'edit_item'     => 'Edit supplier',
+					'add_new_item'  => 'Add new supplier',
+					'search_items'  => 'Search suppliers',
+				),
+				'public'             => false,
+				'publicly_queryable' => false,
+				'show_ui'            => true,
+				'show_in_menu'       => true,
+				'show_in_nav_menus'  => false,
+				'show_tagcloud'      => false,
+				'show_in_rest'       => false,
+				'show_admin_column'  => true,
+				'show_in_quick_edit' => true,
+				'hierarchical'       => true, // tick boxes instead of free typing, so no spelling variants
+				'rewrite'            => false,
+				'query_var'          => false,
+				'capabilities'       => array(
+					'manage_terms' => 'manage_product_terms',
+					'edit_terms'   => 'edit_product_terms',
+					'delete_terms' => 'delete_product_terms',
+					'assign_terms' => 'edit_products',
+				),
+			)
+		);
+	}
+);
+
+// Filter the Products list by supplier.
+add_action(
+	'restrict_manage_posts',
+	static function ( $post_type ) {
+		if ( 'product' !== $post_type ) {
+			return;
+		}
+		wp_dropdown_categories(
+			array(
+				'taxonomy'        => 'dl_supplier',
+				'name'            => 'dl_supplier_filter',
+				'show_option_all' => 'All suppliers',
+				'value_field'     => 'term_id',
+				'selected'        => isset( $_GET['dl_supplier_filter'] ) ? absint( $_GET['dl_supplier_filter'] ) : 0, // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				'hide_empty'      => false,
+				'hierarchical'    => true,
+			)
+		);
+	}
+);
+add_action(
+	'pre_get_posts',
+	static function ( $query ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! is_admin() || ! $query->is_main_query() || 'product' !== $query->get( 'post_type' ) || empty( $_GET['dl_supplier_filter'] ) ) {
+			return;
+		}
+		$tax   = (array) $query->get( 'tax_query' );
+		$tax[] = array(
+			'taxonomy' => 'dl_supplier',
+			'terms'    => absint( $_GET['dl_supplier_filter'] ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		);
+		$query->set( 'tax_query', $tax );
+	}
+);
+
+/*
+ * Stock change trail for the admin: remember who last changed a product's stock status and when,
+ * so the owner can trace updates made by the shop manager. Shown in a "Last updated" column.
+ */
+add_action(
+	'woocommerce_product_set_stock_status',
+	static function ( $product_id, $status ) {
+		$user = wp_get_current_user();
+		update_post_meta( (int) $product_id, '_dl_stock_changed', time() );
+		update_post_meta( (int) $product_id, '_dl_stock_changed_by', $user && $user->exists() ? $user->display_name : 'Automatic (order or supplier sync)' );
+		update_post_meta( (int) $product_id, '_dl_stock_changed_to', (string) $status );
+	},
+	10,
+	2
+);
+
+// Products list: "Last updated" column (date, and who made the last stock change or edit).
+add_filter(
+	'manage_edit-product_columns',
+	static function ( $cols ) {
+		$cols['dl_updated'] = 'Last updated';
+		return $cols;
+	},
+	30
+);
+add_filter(
+	'manage_edit-product_sortable_columns',
+	static function ( $cols ) {
+		$cols['dl_updated'] = 'modified';
+		return $cols;
+	}
+);
+add_action(
+	'manage_product_posts_custom_column',
+	static function ( $col, $post_id ) {
+		if ( 'dl_updated' !== $col ) {
+			return;
+		}
+		$when = get_post_modified_time( 'U', true, $post_id ); // GMT timestamp; wp_date() shows it in Nairobi time
+		echo esc_html( wp_date( 'j M Y, H:i', $when ) );
+		$by     = get_post_meta( $post_id, '_dl_stock_changed_by', true );
+		$at     = (int) get_post_meta( $post_id, '_dl_stock_changed', true );
+		$to     = get_post_meta( $post_id, '_dl_stock_changed_to', true );
+		if ( $by && $at ) {
+			printf( '<small>Stock set to %s by <strong>%s</strong>, %s</small>', esc_html( 'outofstock' === $to ? 'out of stock' : ( 'instock' === $to ? 'in stock' : $to ) ), esc_html( $by ), esc_html( wp_date( 'j M Y, H:i', $at ) ) );
+		} else {
+			$editor = (int) get_post_meta( $post_id, '_edit_last', true );
+			$u      = $editor ? get_userdata( $editor ) : false;
+			if ( $u ) {
+				printf( '<small>Last edited by <strong>%s</strong></small>', esc_html( $u->display_name ) );
+			}
+		}
+	},
+	10,
+	2
+);
+
+// Products list: give every column a sensible width so the extra columns don't get squeezed to one letter.
+add_action(
+	'admin_head-edit.php',
+	static function () {
+		if ( 'product' !== ( $GLOBALS['typenow'] ?? '' ) ) {
+			return;
+		}
+		echo '<style>
+		body.post-type-product table.wp-list-table { table-layout: fixed; width: 100%; }
+		body.post-type-product table.wp-list-table th.column-cb, body.post-type-product table.wp-list-table td.column-cb { width: 2.2em !important; }
+		body.post-type-product table.wp-list-table th.column-thumb, body.post-type-product table.wp-list-table td.column-thumb { width: 52px !important; }
+		body.post-type-product table.wp-list-table th.column-name, body.post-type-product table.wp-list-table td.column-name { width: 15% !important; }
+		body.post-type-product table.wp-list-table th.column-sku, body.post-type-product table.wp-list-table td.column-sku { width: 6% !important; }
+		body.post-type-product table.wp-list-table th.column-is_in_stock, body.post-type-product table.wp-list-table td.column-is_in_stock { width: 7% !important; }
+		body.post-type-product table.wp-list-table th.column-price, body.post-type-product table.wp-list-table td.column-price { width: 8% !important; }
+		body.post-type-product table.wp-list-table th.column-product_cat, body.post-type-product table.wp-list-table td.column-product_cat { width: 11% !important; }
+		body.post-type-product table.wp-list-table th.column-product_tag, body.post-type-product table.wp-list-table td.column-product_tag { width: 5% !important; }
+		body.post-type-product table.wp-list-table th.column-featured, body.post-type-product table.wp-list-table td.column-featured { width: 32px !important; }
+		body.post-type-product table.wp-list-table th.column-date, body.post-type-product table.wp-list-table td.column-date { width: 9% !important; }
+		body.post-type-product table.wp-list-table th.column-taxonomy-product_brand, body.post-type-product table.wp-list-table td.column-taxonomy-product_brand { width: 7% !important; }
+		body.post-type-product table.wp-list-table th.column-taxonomy-dl_supplier, body.post-type-product table.wp-list-table td.column-taxonomy-dl_supplier { width: 8% !important; }
+		body.post-type-product table.wp-list-table th.column-facebook_sync, body.post-type-product table.wp-list-table td.column-facebook_sync { width: 7% !important; }
+		body.post-type-product table.wp-list-table th.column-dl_updated, body.post-type-product table.wp-list-table td.column-dl_updated { width: 11% !important; }
+		body.post-type-product table.wp-list-table th, body.post-type-product table.wp-list-table td { overflow-wrap: break-word; word-break: normal; }
+		body.post-type-product table.wp-list-table th.column-taxonomy-dl_supplier, body.post-type-product table.wp-list-table th.column-facebook_sync, body.post-type-product table.wp-list-table th.column-dl_updated { white-space: normal; }
+		body.post-type-product table.wp-list-table td.column-dl_updated small { display: block; margin-top: 3px; line-height: 1.35; color: #646970; }
+		</style>';
+	}
+);
+
+// Out of stock filter: most recently updated first (unless another sort is chosen).
+add_action(
+	'pre_get_posts',
+	static function ( $query ) {
+		if ( ! is_admin() || ! $query->is_main_query() || 'product' !== $query->get( 'post_type' ) ) {
+			return;
+		}
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		if ( isset( $_GET['stock_status'] ) && 'outofstock' === $_GET['stock_status'] && empty( $_GET['orderby'] ) ) {
+			$query->set( 'orderby', 'modified' );
+			$query->set( 'order', 'DESC' );
+		}
+		// phpcs:enable
+	}
+);
+
+/*
+ * Unpaid orders: never auto-cancel. WooCommerce cancels checkout orders that stay
+ * unpaid past "Hold stock (minutes)"; the owner wants them kept as Pending payment
+ * (the stock hold still expires, so the item is not blocked for other buyers).
+ */
+add_filter( 'woocommerce_cancel_unpaid_order', '__return_false', 99 );
+
+/*
+ * Supplier reference on the product page.
+ * Visitors (incl. the owner when not logged in, e.g. a link opened from WhatsApp) see a
+ * neutral code such as "Ref: ELI-34571". Logged-in staff also see the supplier's full name.
+ * Codes are set in dl_supplier_code().
+ */
+function dl_supplier_code( $name ) {
+	// Owner's codes. A supplier not listed here gets the first 3 letters of its name.
+	$codes = array(
+		'Elite Tech'    => 'ET',
+		'Brianna'       => 'BRI',
+		'Prompt Trader' => 'PROMP',
+		'Pearl RNG'     => 'PEA',
+		'Navispot'      => 'NAV',
+		'Essential'     => 'ESS',
+		'Instyle'       => 'INST',
+		'Mustafa'       => 'MUS',
+		'Planet'        => 'PLAN',
+	);
+	return $codes[ $name ] ?? strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', $name ), 0, 3 ) );
+}
+
+/**
+ * A product's supplier reference, e.g. "ELI-34480", plus the supplier names.
+ *
+ * @param WC_Product $product Product.
+ * @return array{0:string,1:string[]} Reference ('' when the product has no supplier) and names.
+ */
+function dl_supplier_ref_code( $product ) {
+	if ( ! taxonomy_exists( 'dl_supplier' ) ) {
+		return array( '', array() );
+	}
+	$terms = get_the_terms( $product->get_id(), 'dl_supplier' );
+	if ( ! $terms || is_wp_error( $terms ) ) {
+		return array( '', array() );
+	}
+	$codes = array();
+	$names = array();
+	foreach ( $terms as $term ) {
+		$names[] = $term->name;
+		$codes[] = dl_supplier_code( $term->name );
+	}
+	return array( implode( '/', $codes ) . '-' . $product->get_id(), $names );
+}
+
+/**
+ * Print the supplier reference line for a product (nothing if it has no supplier).
+ *
+ * @param WC_Product $product Product.
+ */
+function dl_supplier_ref( $product ) {
+	list( $ref, $names ) = dl_supplier_ref_code( $product );
+	if ( '' === $ref ) {
+		return;
+	}
+	echo '<p class="dl-ref">Ref: ' . esc_html( $ref );
+	if ( current_user_can( 'edit_products' ) ) {
+		echo ' <span class="dl-ref__staff">&middot; Supplier: <strong>' . esc_html( implode( ', ', $names ) ) . '</strong> (only you can see this)</span>';
+	}
+	echo '</p>';
+}
+
+// Staff see the full supplier name, so never let a staff view of a product page be cached.
+add_action(
+	'template_redirect',
+	static function () {
+		if ( is_product() && current_user_can( 'edit_products' ) ) {
+			nocache_headers();
+		}
+	}
+);
+
+/**
+ * Homepage rotation: the grid before this script holds a larger pool of products (cached page, so
+ * it stays fast); each visitor's browser shuffles it and CSS shows only the first 10. Grids marked
+ * data-mix keep perfumes and watches alternating. Runs inline, before the lazy images load.
+ */
+function dl_rotate_script() {
+	echo '<script>(function(g){if(!g)return;var c=[].slice.call(g.children),sh=function(a){for(var i=a.length-1;i>0;i--){var j=Math.random()*(i+1)|0,t=a[i];a[i]=a[j];a[j]=t;}return a;};'
+		. 'if(g.hasAttribute("data-mix")){var p=sh(c.filter(function(x){return x.classList.contains("dl-card--poster");})),w=sh(c.filter(function(x){return !x.classList.contains("dl-card--poster");})),o=[];while(p.length||w.length){if(p.length)o.push(p.shift());if(w.length)o.push(w.shift());}c=o;}else{c=sh(c);}'
+		. 'c.forEach(function(x){g.appendChild(x);});})(document.currentScript.previousElementSibling);</script>'; // phpcs:ignore WordPress.Security.EscapeOutput
+}

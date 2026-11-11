@@ -21,13 +21,37 @@ add_filter(
 			$parts['title'] = dl_landing_title() . ' in Kenya';
 		} elseif ( function_exists( 'is_product_category' ) && is_product_category() ) {
 			$term           = get_queried_object();
-			$parts['title'] = html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' ) . ' in Kenya';
+			$seo            = (string) get_term_meta( $term->term_id, 'dl_seo_title', true );
+			$parts['title'] = $seo ? $seo : dl_term_display_name( $term ) . ' in Kenya';
 		}
 		unset( $parts['tagline'] );
 		return $parts;
 	}
 );
 add_filter( 'document_title_separator', static fn() => '|' );
+
+/**
+ * Category name with its brand in front when the name alone is generic,
+ * e.g. "Casio Watches for Men" instead of "Watches for Men".
+ *
+ * @param WP_Term $term Category.
+ * @return string
+ */
+function dl_term_display_name( $term ) {
+	$name = html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' );
+	if ( $term->parent && preg_match( '/^(watches|watch|perfumes?)\b.*\b(men|women|ladies)\b|^(men|women)\b.*perfumes?$/i', $name ) ) {
+		$parent = get_term( $term->parent, $term->taxonomy );
+		if ( $parent && ! is_wp_error( $parent ) ) {
+			$pname = html_entity_decode( $parent->name, ENT_QUOTES, 'UTF-8' );
+			if ( 0 === strcasecmp( $pname, 'Watches' ) ) {
+				return ucwords( $name );
+			}
+			$pname = ucwords( $pname );
+			$name  = preg_match( '/perfume/i', $name ) ? $pname . ' for ' . ( preg_match( '/^women/i', $name ) ? 'Women' : 'Men' ) : $pname . ' ' . $name;
+		}
+	}
+	return $name;
+}
 
 /**
  * Meta description for the current page.
@@ -159,6 +183,8 @@ add_action(
 				'telephone' => DL_PHONE,
 				'email'     => DL_EMAIL,
 				'priceRange' => 'KES',
+				// Official profiles: tells Google which Facebook page is the real one.
+				'sameAs'    => array( 'https://www.facebook.com/DlightGiftshopKe', 'https://www.instagram.com/dlightgiftshopofficial/' ),
 				'openingHoursSpecification' => array(
 					array(
 						'@type'     => 'OpeningHoursSpecification',
@@ -199,6 +225,13 @@ add_filter(
 	'woocommerce_structured_data_product',
 	static function ( $markup, $product ) {
 		$brand = dl_product_eyebrow( $product );
+		if ( ( ! $brand || preg_match( '/tester|original|arabic/i', $brand ) ) && function_exists( 'dl_feed_brand' ) ) {
+			$brand = dl_feed_brand( $product ); // Perfumes: the brand from the title (Tom Ford, Dior ...).
+		}
+		$model = function_exists( 'dl_product_model' ) ? dl_product_model( $product ) : '';
+		if ( $model ) {
+			$markup['mpn'] = $model;
+		}
 		if ( $brand && ! preg_match( '/tester|original|arabic/i', $brand ) ) {
 			$markup['brand'] = array(
 				'@type' => 'Brand',
@@ -252,4 +285,45 @@ add_filter(
 	},
 	10,
 	2
+);
+
+// Buying guides: Article + FAQ structured data, so Google can show them as articles and FAQ answers.
+add_action(
+	'wp_head',
+	static function () {
+		if ( ! is_singular( 'post' ) ) {
+			return;
+		}
+		$post  = get_queried_object();
+		$img   = get_the_post_thumbnail_url( $post, 'large' );
+		$ids   = array_filter( array_map( 'intval', explode( ',', (string) get_post_meta( $post->ID, 'dl_featured_products', true ) ) ) );
+		if ( ! $img && $ids ) {
+			$p   = wc_get_product( reset( $ids ) );
+			$img = $p ? wp_get_attachment_url( $p->get_image_id() ) : '';
+		}
+		$org   = array( '@type' => 'Organization', 'name' => 'Dlight Giftshop', 'url' => home_url( '/' ), 'logo' => array( '@type' => 'ImageObject', 'url' => dl_asset_url( '/assets/img/logo-dg.png' ) ) );
+		$graph = array(
+			array(
+				'@type'            => 'Article',
+				'headline'         => wp_strip_all_tags( get_the_title( $post ) ),
+				'description'      => wp_strip_all_tags( get_the_excerpt( $post ) ),
+				'datePublished'    => get_the_date( 'c', $post ),
+				'dateModified'     => get_the_modified_date( 'c', $post ),
+				'author'           => $org,
+				'publisher'        => $org,
+				'mainEntityOfPage' => get_permalink( $post ),
+				'image'            => $img ? array( $img ) : array(),
+			),
+		);
+		// FAQ: every <h3> ending with "?" followed by its paragraph(s).
+		if ( preg_match_all( '#<h3[^>]*>(.*?\?)</h3>\s*((?:<p[^>]*>.*?</p>\s*)+)#s', (string) $post->post_content, $m, PREG_SET_ORDER ) ) {
+			$faq = array();
+			foreach ( $m as $q ) {
+				$faq[] = array( '@type' => 'Question', 'name' => wp_strip_all_tags( $q[1] ), 'acceptedAnswer' => array( '@type' => 'Answer', 'text' => trim( wp_strip_all_tags( $q[2] ) ) ) );
+			}
+			$graph[] = array( '@type' => 'FAQPage', 'mainEntity' => $faq );
+		}
+		echo '<script type="application/ld+json">' . wp_json_encode( array( '@context' => 'https://schema.org', '@graph' => $graph ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n";
+	},
+	6
 );

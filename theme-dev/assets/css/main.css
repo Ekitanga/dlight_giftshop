@@ -172,6 +172,26 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
 .dl-head::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 72px; height: 3px; background: var(--gold); }
 .dl-head h2 { font: 700 clamp(23px, 2.3vw, 32px)/1.2 var(--serif); }
 
+/* The Edit: Just in / Under KSh 5,000 / Luxury picks */
+.dl-edit__head { align-items: center; }
+.dl-edit__tabs { display: none; gap: 4px; margin-right: auto; margin-left: clamp(12px, 3vw, 40px); }
+.dl-edit.is-ready .dl-edit__tabs { display: flex; }
+.dl-edit__tab { padding: 8px 14px; border: 0; background: none; color: var(--muted, #6f675d); font: 600 12px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; position: relative; white-space: nowrap; transition: color .2s; }
+.dl-edit__tab::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; background: var(--gold); transform: scaleX(0); transition: transform .25s; }
+.dl-edit__tab:hover { color: var(--ink); }
+.dl-edit__tab[aria-selected="true"] { color: var(--ink); }
+.dl-edit__tab[aria-selected="true"]::after { transform: scaleX(1); }
+.dl-edit__panel + .dl-edit__panel { margin-top: 18px; }
+.dl-edit.is-ready .dl-edit__panel + .dl-edit__panel { margin-top: 0; }
+.dl-edit__panel[hidden] { display: none; }
+@media (max-width: 700px) {
+	.dl-edit__head { flex-wrap: wrap; }
+	.dl-edit.is-ready .dl-edit__tabs { order: 3; width: 100%; margin: 6px 0 0; overflow-x: auto; scrollbar-width: none; }
+	.dl-edit__tabs::-webkit-scrollbar { display: none; }
+	.dl-edit__tab { padding: 8px 10px; }
+	.dl-edit__tab::after { left: 10px; right: 10px; }
+}
+
 /* Category cards */
 .dl-cats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(10px, 1.2vw, 16px); }
 .dl-cat { position: relative; display: block; height: clamp(190px, 17vw, 250px); overflow: hidden; border-radius: 10px; color: var(--white); isolation: isolate; transition: transform .3s var(--ease), box-shadow .3s; }
@@ -394,6 +414,8 @@ html.dla-open .dl-wa-float { display: none; }
 .dl-assure svg { flex: none; width: 24px; height: 24px; color: var(--gold-dark); }
 .dl-assure strong { display: block; color: var(--ink); font-size: 14.5px; }
 .dl-assure a { text-decoration: underline; }
+.dl-ref { margin-top: 14px; font-size: 12px; letter-spacing: .04em; color: var(--muted); }
+.dl-ref__staff { color: var(--gold-dark); }
 .dl-tester { margin-top: 14px; padding: 2px 14px; border: 1px solid var(--gold); border-radius: var(--radius); background: #fffaf0; }
 .dl-tester summary { display: flex; align-items: center; min-height: 46px; font-weight: 600; font-size: 15px; cursor: pointer; }
 .dl-tester p { margin: 0 0 12px; color: #3f3b35; font-size: 14.5px; }
@@ -416,6 +438,10 @@ html.dla-open .dl-wa-float { display: none; }
 .dl-page { padding-block: clamp(24px, 3.5vw, 44px) clamp(40px, 5vw, 72px); }
 .dl-page__title { position: relative; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font: 700 clamp(26px, 3vw, 40px)/1.2 var(--serif); overflow-wrap: anywhere; }
 .dl-page__title::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 72px; height: 3px; background: var(--gold); }
+.dl-article { max-width: 820px; }
+.dl-article__meta { margin: -6px 0 22px; color: var(--muted); font-size: 14px; }
+.dl-article__help { max-width: 820px; margin-block: 8px 40px; color: var(--muted); }
+.dl-article__help a { color: var(--wa); font-weight: 600; text-decoration: underline; }
 .dl-ways { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
 .dl-ways a { display: grid; gap: 4px; height: 100%; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); transition: border-color .2s; }
 .dl-ways a:hover { border-color: var(--gold); }
@@ -613,6 +639,16 @@ ul.wc_payment_methods { list-style: none; margin: 0 0 14px; padding: 0; border-t
 .dl-thanks__card h2 { margin: 0 0 12px; font: 700 21px/1.25 var(--serif); }
 .dl-thanks__next ol { margin: 0 0 14px; padding-left: 20px; line-height: 1.55; }
 .dl-thanks__next li { padding-block: 3px; }
+.dl-speedaf { margin: 4px 0 16px; padding: 14px 16px; border: 2px solid #c0392b; border-radius: 10px; background: var(--white); }
+.dl-speedaf h3 { margin: 0 0 8px; font: 700 17px/1.3 var(--serif); }
+.dl-speedaf__warn { margin: 0 0 10px; padding: 8px 10px; border-radius: 6px; background: #fdecea; color: #8a1f14; line-height: 1.5; }
+.dl-speedaf__steps { width: 100%; margin: 0 0 8px; border-collapse: collapse; }
+.dl-speedaf__steps th { width: 40%; padding: 4px 10px 4px 0; text-align: left; font-weight: 400; color: var(--muted, #6f675c); vertical-align: top; }
+.dl-speedaf__steps td { padding: 4px 0; vertical-align: top; }
+.dl-speedaf__note { margin: 0 0 6px; font-size: 14px; }
+.dl-speedaf__cta { margin: 10px 0 0; }
+.dl-speedaf__cta .dl-btn { white-space: normal; width: 100%; justify-content: center; text-align: center; }
+.dl-speedaf__steps td { overflow-wrap: anywhere; }
 .dl-thanks__items { list-style: none; margin: 0 0 8px; padding: 0; }
 .dl-thanks__items li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .dl-thanks__name { font-size: 14px; line-height: 1.35; }
@@ -830,3 +866,6 @@ ul.wc_payment_methods { list-style: none; margin: 0 0 14px; padding: 0; border-t
 	html { scroll-behavior: auto; }
 	*, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Homepage rotation: show 10 of each shuffled pool. */
+.dl-rotate > .dl-card:nth-child(n+11) { display: none; }

@@ -12,7 +12,7 @@ get_header();
 global $wp_query;
 
 $term     = is_product_taxonomy() ? get_queried_object() : null;
-$title    = $term ? html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' ) : ( dl_landing_title() ?: 'All Products' );
+$title    = $term ? ( 'product_cat' === $term->taxonomy ? dl_term_display_name( $term ) : html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' ) ) : ( dl_landing_title() ?: 'All Products' );
 $base     = $term ? get_term_link( $term ) : wc_get_page_permalink( 'shop' );
 $base     = is_wp_error( $base ) ? '' : $base;
 $children = $term
@@ -84,7 +84,7 @@ $total  = (int) $wp_query->found_posts;
 			<label class="dl-filter dl-filter--sort"><span>Sort by</span>
 				<select name="orderby">
 					<?php
-					foreach ( array( '' => 'Default', 'popularity' => 'Best selling', 'date' => 'Newest', 'price' => 'Price: low to high', 'price-desc' => 'Price: high to low' ) as $value => $label ) {
+					foreach ( array( '' => 'Newest arrivals, best price first', 'popularity' => 'Best selling', 'date' => 'Newest', 'price' => 'Price: low to high', 'price-desc' => 'Price: high to low' ) as $value => $label ) {
 						printf( '<option value="%s" %s>%s</option>', esc_attr( $value ), selected( $orderby, $value, false ), esc_html( $label ) );
 					}
 					?>

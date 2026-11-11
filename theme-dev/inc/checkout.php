@@ -57,6 +57,25 @@ function dl_chosen_method() {
 	return (string) ( $chosen[0] ?? '' );
 }
 
+/**
+ * If the chosen delivery is Speedaf (outside Nairobi), its fee; otherwise null.
+ *
+ * @return float|null
+ */
+function dl_chosen_speedaf_fee() {
+	$packages = WC()->shipping() ? WC()->shipping()->get_packages() : array();
+	$rates    = isset( $packages[0]['rates'] ) ? $packages[0]['rates'] : array();
+	$chosen   = dl_chosen_method();
+	if ( ! isset( $rates[ $chosen ] ) || dl_is_pickup( $chosen ) ) {
+		return null;
+	}
+	$label = $rates[ $chosen ]->get_label();
+	if ( false !== stripos( $label, 'nairobi' ) && false === stripos( $label, 'outside' ) ) {
+		return null;
+	}
+	return (float) $rates[ $chosen ]->get_cost();
+}
+
 // Only Kenyan addresses, so the county list and delivery options always make sense.
 add_filter( 'woocommerce_countries_allowed_countries', static fn( $c ) => isset( $c['KE'] ) ? array( 'KE' => $c['KE'] ) : $c );
 add_filter( 'woocommerce_countries_shipping_countries', static fn( $c ) => isset( $c['KE'] ) ? array( 'KE' => $c['KE'] ) : $c );
@@ -149,7 +168,7 @@ function dl_delivery_options_html() {
 			$note  = 'Brought to your door. We call you to agree a delivery time.';
 		} else {
 			$title = 'Outside Nairobi via Speedaf';
-			$note  = 'Sent by Speedaf to the Speedaf office nearest you.<span class="dl-option__alert"><b>Please note:</b> Speedaf\'s own parcel fee is separate. You pay it to Speedaf before delivery, and we will send you the details by SMS or WhatsApp.</span>';
+			$note  = 'Sent by Speedaf to the Speedaf office nearest you, usually in 1 to 2 days.';
 		}
 		$input_id = 'shipping_method_0_' . sanitize_title( $id );
 		$html    .= sprintf(
@@ -579,6 +598,12 @@ add_filter(
 			$items = (float) WC()->cart->get_subtotal() - (float) WC()->cart->get_discount_total();
 			$off   = floor( $items * DL_MPESA_DISCOUNT / 100 );
 			return 'Pay now with M-Pesa and save ' . DL_MPESA_DISCOUNT . '%' . ( $off > 0 ? ' (' . wp_strip_all_tags( wc_price( $off ) ) . ')' : '' ) . '. We send a payment request to your phone.';
+		}
+		if ( 'cod' === $id ) {
+			$fee = dl_chosen_speedaf_fee();
+			if ( null !== $fee ) {
+				return 'Pay for your order by M-Pesa or cash when it arrives. To confirm a pay-on-delivery order outside Nairobi, you first pay the ' . ( $fee > 0 ? wp_strip_all_tags( wc_price( $fee ) ) . ' ' : '' ) . 'delivery fee to Speedaf. Speedaf\'s payment details appear on the next page after you place your order, and in your order email.';
+			}
 		}
 		return $description;
 	},

@@ -75,11 +75,83 @@ function dl_order_next_steps( $order ) {
 		$lines[] = 'We will call you on ' . $phone . ' to agree a delivery time to ' . dl_order_place( $order ) . '.';
 	} elseif ( 'courier' === $how ) {
 		$lines[] = 'We will send your order by Speedaf to ' . dl_order_place( $order ) . ', and share the parcel details with you on ' . $phone . '.';
-		$lines[] = 'Speedaf\'s parcel fee is paid to Speedaf before delivery.';
+		if ( $cod ) {
+			// Pay on delivery outside Nairobi: the delivery fee goes to Speedaf first (commitment), the product is paid on arrival.
+			$fee     = (float) $order->get_shipping_total();
+			$lines[] = 'First, pay the ' . ( $fee > 0 ? dl_order_ksh( $fee ) . ' ' : '' ) . 'delivery fee to SPEEDAF (Paybill ' . DL_SPEEDAF_PAYBILL . ') as a commitment fee, then send us the Speedaf M-Pesa message on WhatsApp. We send your parcel once we receive it. See how to pay below.';
+			$lines[] = 'When your parcel arrives, pay ' . dl_order_ksh( (float) $order->get_total() - $fee ) . ' for your order, by M-Pesa or cash. Do not pay for your order to the Speedaf paybill.';
+			return $lines;
+		}
+		$lines[] = 'Your delivery fee covers Speedaf, so there is nothing more to pay on collection.';
 	}
 	$lines[] = $cod ? ( 'pickup' === $how ? 'Pay when you collect, by M-Pesa or cash.' : 'Pay when your order arrives, by M-Pesa or cash.' ) : ( $order->get_date_paid() ? 'Your payment has been received. Thank you.' : 'Your order will be confirmed once payment is received.' );
 	return $lines;
 }
+
+// Speedaf's own M-Pesa paybill (not ours): pay-on-delivery customers outside Nairobi pay the delivery fee here first.
+const DL_SPEEDAF_PAYBILL = '4040305';
+
+/**
+ * Does this order need the Speedaf delivery fee paid first (Speedaf delivery, pay on delivery)?
+ *
+ * @param WC_Order $order Order.
+ * @return bool
+ */
+function dl_order_needs_speedaf_fee( $order ) {
+	return 'courier' === dl_order_delivery( $order ) && 'cod' === $order->get_payment_method();
+}
+
+/**
+ * "How to pay the Speedaf delivery fee" box (thank-you page and emails), or plain text.
+ *
+ * @param WC_Order $order Order.
+ * @param bool     $plain Plain text.
+ * @return string
+ */
+function dl_speedaf_box( $order, $plain = false ) {
+	if ( ! dl_order_needs_speedaf_fee( $order ) ) {
+		return '';
+	}
+	$fee  = dl_order_ksh( (float) $order->get_shipping_total() );
+	$name = trim( $order->get_formatted_billing_full_name() );
+	$rest = dl_order_ksh( (float) $order->get_total() - (float) $order->get_shipping_total() );
+	if ( $plain ) {
+		return "HOW TO PAY THE SPEEDAF DELIVERY FEE\n"
+			. "M-Pesa > Lipa na M-Pesa > Pay Bill\n"
+			. 'Business number: ' . DL_SPEEDAF_PAYBILL . "\n"
+			. 'Account number: your full name' . ( $name ? ' (' . $name . ')' : '' ) . "\n"
+			. 'Amount: ' . $fee . "\n"
+			. "The M-Pesa confirmation shows SPEEDAF LOGISTICS KENYA LTD.\n"
+			. 'THEN SEND US THAT M-PESA MESSAGE ON WHATSAPP: ' . dl_order_whatsapp( $order, 'Hello Dlight Giftshop, I have paid the Speedaf delivery fee. Here is the M-Pesa message:' ) . "\nWe cannot see Speedaf payments, so we send your parcel once we receive your message.\n"
+			. 'IMPORTANT: Paybill ' . DL_SPEEDAF_PAYBILL . ' belongs to SPEEDAF, not Dlight Giftshop. Pay ONLY the ' . $fee . ' delivery fee there. Do NOT pay for your order to this paybill. You pay ' . $rest . " for your order when the parcel arrives.\n\n";
+	}
+	return '<div class="dl-speedaf">'
+		. '<h3>How to pay the Speedaf delivery fee</h3>'
+		. '<p class="dl-speedaf__warn"><strong>This is SPEEDAF\'s paybill, not Dlight Giftshop\'s.</strong> Pay <strong>only the ' . esc_html( $fee ) . ' delivery fee</strong> here. <strong>Do not pay for your order to this paybill.</strong> You pay ' . esc_html( $rest ) . ' for your order when the parcel arrives.</p>'
+		. '<table class="dl-speedaf__steps" cellspacing="0" cellpadding="0" role="presentation">'
+		. '<tr><th>M-Pesa</th><td>Lipa na M-Pesa &rsaquo; Pay Bill</td></tr>'
+		. '<tr><th>Business number</th><td><strong>' . esc_html( DL_SPEEDAF_PAYBILL ) . '</strong> (Speedaf)</td></tr>'
+		. '<tr><th>Account number</th><td><strong>Your full name</strong>' . ( $name ? ' (' . esc_html( $name ) . ')' : '' ) . '</td></tr>'
+		. '<tr><th>Amount</th><td><strong>' . esc_html( $fee ) . '</strong></td></tr>'
+		. '</table>'
+		. '<p class="dl-speedaf__note">The M-Pesa confirmation will show <strong>SPEEDAF LOGISTICS KENYA LTD</strong>.</p>'
+		. '<p class="dl-speedaf__note"><strong>Then send us that M-Pesa message on WhatsApp.</strong> We cannot see Speedaf payments, so we send your parcel once we receive your message.</p>'
+		. '<p class="dl-speedaf__cta"><a class="dl-btn dl-btn--wa" href="' . esc_attr( dl_order_whatsapp( $order, 'Hello Dlight Giftshop, I have paid the Speedaf delivery fee. Here is the M-Pesa message:' ) ) . '">Send us the M-Pesa message on WhatsApp</a></p>'
+		. '</div>';
+}
+
+/**
+ * Plain "KSh 2,450" for emails and the thank-you page.
+ *
+ * @param float $amount Amount.
+ * @return string
+ */
+function dl_order_ksh( $amount ) {
+	return 'KSh ' . number_format( max( 0, (float) $amount ), 0 );
+}
+
+// Google Business Profile review link (owner's).
+const DL_GOOGLE_REVIEW_URL = 'https://g.page/r/CfgiV75gTqpdEAI/review';
 
 // The customer's "what happens next", above the order details.
 add_action(
@@ -91,7 +163,8 @@ add_action(
 		$how   = dl_order_delivery( $order );
 		$cod   = 'cod' === $order->get_payment_method();
 		$phone = $order->get_billing_phone();
-		$lines = array();
+		$lines  = array();
+		$review = false; // Completed orders also invite a Google review.
 		switch ( $email->id ) {
 			case 'customer_processing_order':
 			case 'customer_on_hold_order':
@@ -100,6 +173,7 @@ add_action(
 			case 'customer_completed_order':
 				$lines[] = 'pickup' === $how ? 'Thank you for collecting your order.' : ( 'courier' === $how ? 'Your order is on its way with Speedaf.' : 'Your order has been delivered.' );
 				$lines[] = 'We hope you love it. If anything is not right, tell us within 24 hours and we will help.';
+				$review  = true;
 				break;
 			case 'customer_cancelled_order':
 				$lines[] = 'Your order #' . $order->get_order_number() . ' has been cancelled. If you did not ask for this, or would still like the items, reply to this email or WhatsApp us and we will sort it out.';
@@ -111,16 +185,28 @@ add_action(
 		if ( ! $lines ) {
 			return;
 		}
-		$wa = dl_order_whatsapp( $order, 'Hello Dlight Giftshop, I have a question about my order' );
+		$wa    = dl_order_whatsapp( $order, 'Hello Dlight Giftshop, I have a question about my order' );
+		$fresh = in_array( $email->id, array( 'customer_processing_order', 'customer_on_hold_order' ), true );
 		if ( $plain_text ) {
-			echo "WHAT HAPPENS NEXT\n" . implode( "\n", $lines ) . "\nQuestions? WhatsApp us: " . $wa . "\n\n"; // phpcs:ignore WordPress.Security.EscapeOutput
+			echo "WHAT HAPPENS NEXT\n" . implode( "\n", $lines ) . "\n\n" . ( $fresh ? dl_speedaf_box( $order, true ) : '' ) . 'Questions? WhatsApp us: ' . $wa . "\n\n"; // phpcs:ignore WordPress.Security.EscapeOutput
+			if ( $review ) {
+				echo 'Happy with your order? Please leave us a quick Google review: ' . DL_GOOGLE_REVIEW_URL . "\n\n"; // phpcs:ignore WordPress.Security.EscapeOutput
+			}
 			return;
 		}
 		echo '<div class="dl-next"><h2>What happens next</h2>';
 		foreach ( $lines as $line ) {
 			echo '<p>' . esc_html( $line ) . '</p>';
 		}
-		echo '<p><a class="dl-btn" href="' . esc_attr( $wa ) . '">Questions? Chat with us on WhatsApp</a></p></div>';
+		if ( $fresh ) {
+			echo dl_speedaf_box( $order ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
+		}
+		echo '<p><a class="dl-btn" href="' . esc_attr( $wa ) . '">Questions? Chat with us on WhatsApp</a></p>';
+		if ( $review ) {
+			echo '<p>Happy with your order? A quick Google review helps other shoppers find us.</p>';
+			echo '<p><a class="dl-btn" href="' . esc_url( DL_GOOGLE_REVIEW_URL ) . '">&#9733; Leave a Google review</a></p>';
+		}
+		echo '</div>';
 	},
 	5,
 	4
@@ -142,7 +228,7 @@ add_action(
 			'Delivery' => $how,
 			'Where'    => 'Shop pickup' === $how ? 'Collects at the shop' : dl_order_place( $order ),
 			// Cash on delivery orders count as "paid" in WooCommerce once processing, so check the method first.
-			'Payment'  => $order->get_payment_method_title() . ( 'cod' === $order->get_payment_method() ? ' (collect payment on delivery)' : ( $order->get_date_paid() ? ' (paid)' : ' (not paid yet)' ) ),
+			'Payment'  => $order->get_payment_method_title() . ( 'cod' === $order->get_payment_method() ? ( 'Courier (Speedaf)' === $how ? ' (customer pays the ' . dl_order_ksh( (float) $order->get_shipping_total() ) . ' delivery fee to Speedaf first, then ' . dl_order_ksh( (float) $order->get_total() - (float) $order->get_shipping_total() ) . ' on delivery)' : ' (collect payment on delivery)' ) : ( $order->get_date_paid() ? ' (paid)' : ' (not paid yet)' ) ),
 			'Note'     => $order->get_customer_note(),
 		);
 		$rows  = array_filter( $rows );
@@ -184,6 +270,14 @@ add_filter(
 			.dl-next h2 { margin: 0 0 8px; font-size: 18px; }
 			.dl-next p { margin: 0 0 8px; }
 			.dl-btn { display: inline-block; margin-top: 4px; padding: 10px 16px; background: #128c4a; color: #ffffff !important; border-radius: 6px; font-weight: bold; text-decoration: none; }
+			.dl-speedaf { margin: 12px 0; padding: 14px 16px; background: #ffffff; border: 2px solid #c0392b; border-radius: 6px; }
+			.dl-speedaf h3 { margin: 0 0 8px; font-size: 16px; color: #111111; }
+			.dl-speedaf__warn { margin: 0 0 10px; padding: 8px 10px; background: #fdecea; color: #8a1f14; border-radius: 4px; }
+			.dl-speedaf__steps { width: 100%; margin: 0 0 8px; }
+			.dl-speedaf__steps th { width: 130px; padding: 3px 10px 3px 0; text-align: left; color: #6f675c; font-weight: normal; vertical-align: top; }
+			.dl-speedaf__steps td { padding: 3px 0; vertical-align: top; }
+			.dl-speedaf__note { margin: 0 0 6px; font-size: 14px; }
+			.dl-speedaf__cta { margin: 10px 0 0; }
 			.dl-facts { width: 100%; }
 			.dl-facts th { width: 90px; padding: 4px 10px 4px 0; text-align: left; color: #6f675c; font-weight: normal; vertical-align: top; }
 			.dl-facts td { padding: 4px 0; font-weight: bold; vertical-align: top; }

@@ -399,3 +399,34 @@
 	});
 	document.addEventListener('input', function (e) { if (e.target.matches('.woocommerce-cart-form input.qty')) { update(); } });
 })();
+
+// The Edit: switch between Just in / Under KSh 5,000 / Luxury picks.
+(function () {
+	try {
+		var box = document.querySelector('.dl-edit');
+		if (!box) { return; }
+		var tabs = Array.prototype.slice.call(box.querySelectorAll('.dl-edit__tab'));
+		var more = box.querySelector('.dl-edit__more');
+		var show = function (tab) {
+			tabs.forEach(function (t) {
+				var on = t === tab;
+				t.setAttribute('aria-selected', on ? 'true' : 'false');
+				t.tabIndex = on ? 0 : -1;
+				var panel = document.getElementById(t.getAttribute('aria-controls'));
+				if (panel) { panel.hidden = !on; }
+			});
+			if (more) { more.href = tab.getAttribute('data-more'); }
+		};
+		tabs.forEach(function (t, i) {
+			t.addEventListener('click', function () { show(t); });
+			t.addEventListener('keydown', function (e) {
+				if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+					var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+					next.focus();
+					show(next);
+				}
+			});
+		});
+		if (tabs.length) { show(tabs[0]); box.classList.add('is-ready'); }
+	} catch (err) { /* never break the page */ }
+})();
