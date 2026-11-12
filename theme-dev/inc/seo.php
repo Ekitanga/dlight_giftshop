@@ -265,6 +265,93 @@ add_filter(
 );
 
 /**
+ * Pages kept out of the search index (and so out of the sitemap): leftover theme demo pages,
+ * compare and order tracking, and the cart, checkout and account pages. Never the home page.
+ *
+ * @return int[]
+ */
+function dl_noindex_page_ids() {
+	// Several leftover pages can share one address (e.g. four "Compare" pages), so match every page by address.
+	$ids = get_posts(
+		array(
+			'post_type'     => 'page',
+			'post_status'   => 'any',
+			'numberposts'   => -1,
+			'fields'        => 'ids',
+			'post_name__in' => array( 'compare', 'yith-compare', 'yith-compare-2', 'about-us-type-2', 'contact-us-type-2', 'elm-about-us', 'elm-contact-us', 'elm-digital-v1', 'order-tracking' ),
+		)
+	);
+	if ( function_exists( 'wc_get_page_id' ) ) {
+		foreach ( array( 'cart', 'checkout', 'myaccount' ) as $wc ) {
+			$ids[] = (int) wc_get_page_id( $wc );
+		}
+	}
+	return array_values( array_diff( array_filter( $ids, static fn( $id ) => $id > 0 ), array( (int) get_option( 'page_on_front' ) ) ) );
+}
+
+// The sitemap lists only pages Google should index (a sitemap page marked noindex is reported as an error).
+add_filter(
+	'wp_sitemaps_posts_query_args',
+	static function ( $args, $post_type ) {
+		if ( 'page' === $post_type ) {
+			$args['post__not_in'] = array_merge( (array) ( $args['post__not_in'] ?? array() ), dl_noindex_page_ids() );
+		}
+		return $args;
+	},
+	10,
+	2
+);
+
+// Common guesses and old addresses for the cart go to the real cart page.
+add_action(
+	'template_redirect',
+	static function () {
+		if ( ! is_404() || ! function_exists( 'wc_get_cart_url' ) ) {
+			return;
+		}
+		$path = trim( (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '', PHP_URL_PATH ), '/' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		if ( in_array( $path, array( 'cart', 'basket', 'shopping-bag' ), true ) ) {
+			wp_safe_redirect( wc_get_cart_url(), 301 );
+			exit;
+		}
+		// Old pages of perfumes we still sell (from Google's "Not found" report) -> today's page for the same perfume.
+		$moved = array(
+			'product/libre-le-parfum-yves-saint-laurent'                => 31760,
+			'product/chanel-chance-eau-tendre-eau-de-toilette-spray'    => 32338,
+			'product/christian-dior-miss-dior-eau-de-parfum-spray'      => 31438,
+			'product/givenchy-gentleman-intense-eau-de-toilette-spray'  => 34394,
+			'product/acqua-di-gio-profondo-giorgio-armani-eau-de-parfum-spray' => 32330,
+		);
+		if ( isset( $moved[ $path ] ) && 'publish' === get_post_status( $moved[ $path ] ) ) {
+			wp_safe_redirect( get_permalink( $moved[ $path ] ), 301 );
+			exit;
+		}
+		// Products, tags and departments of the old shop (household, clothing, electronics...) are gone for good:
+		// answer 410 so Google drops them sooner. The visitor still sees the normal "page not found" page.
+		if ( preg_match( '#^(product/[^/]+|product-tag/.+|product-category/(fashion|home-office|outdoor-items|kids-items|electronics-appliances|computersaccessories|toners-cartridges|new-stock|valentine-deals)(/.*)?)$#', $path ) ) {
+			status_header( 410 );
+		}
+	},
+	5
+);
+
+// The blog list page gets a canonical address like every other page.
+add_action(
+	'wp_head',
+	static function () {
+		if ( is_home() && ! is_front_page() && ! is_paged() && get_option( 'page_for_posts' ) ) {
+			echo '<link rel="canonical" href="' . esc_url( get_permalink( (int) get_option( 'page_for_posts' ) ) ) . '" />' . "\n";
+		} elseif ( is_category() && ! is_paged() ) {
+			$link = get_term_link( get_queried_object() );
+			if ( ! is_wp_error( $link ) ) {
+				echo '<link rel="canonical" href="' . esc_url( $link ) . '" />' . "\n";
+			}
+		}
+	},
+	2
+);
+
+/**
  * True on the shop page and product taxonomy archives.
  *
  * @return bool
