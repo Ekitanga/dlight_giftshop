@@ -76,14 +76,23 @@ function dl_et_sync( $apply = true ) {
 	} else {
 		update_option( 'dl_et_last_count', count( $list ), false );
 		$mapped = array();
+		// Elite Tech sometimes lists the same watch on more than one page (option dl_et_map_extra:
+		// product ID => extra pages, photo-checked). Our watch is in stock while ANY of its pages is.
+		$extra = (array) get_option( 'dl_et_map_extra', array() );
+		// Pages never counted as "not on our website" (e.g. a watch we sell from another supplier): option dl_et_ignore.
+		foreach ( array_keys( (array) get_option( 'dl_et_ignore', array() ) ) as $url ) {
+			$mapped[ trailingslashit( strtolower( $url ) ) ] = 1;
+		}
 		foreach ( $map as $pid => $url ) {
-			$url            = trailingslashit( strtolower( $url ) );
-			$mapped[ $url ] = 1;
-			$p              = wc_get_product( (int) $pid );
+			$urls = array_map( static fn( $u ) => trailingslashit( strtolower( $u ) ), array_merge( array( $url ), (array) ( $extra[ $pid ] ?? array() ) ) );
+			foreach ( $urls as $u ) {
+				$mapped[ $u ] = 1;
+			}
+			$p = wc_get_product( (int) $pid );
 			if ( ! $p || 'publish' !== $p->get_status() || 'yes' === get_post_meta( (int) $pid, '_dl_no_sync', true ) ) {
 				continue;
 			}
-			$want = isset( $list[ $url ] ) ? 'instock' : 'outofstock';
+			$want = array_intersect_key( $list, array_flip( $urls ) ) ? 'instock' : 'outofstock';
 			if ( $p->get_stock_status() === $want ) {
 				continue;
 			}
