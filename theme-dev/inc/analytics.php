@@ -218,3 +218,48 @@ add_action(
 	},
 	5
 );
+
+/*
+ * Meta Conversions API: better customer matching on sales (Event Match Quality).
+ * The Facebook plugin sends the county as WooCommerce's code ("KE30" -> "ke" after its clean-up) and the
+ * town as typed ("Westlands, Nairobi"), which Meta cannot match. For events tied to an order, send the
+ * county name ("nairobi"), the town ("nairobi" for Nairobi orders) and a stable customer ID from the phone
+ * number. Only fields the plugin already sends are corrected (it sends them only when Meta's automatic
+ * advanced matching allows them); everything is SHA-256 hashed as Meta requires.
+ */
+add_filter(
+	'wc_facebook_api_pixel_event_request_data',
+	static function ( $data ) {
+		if ( empty( $data['data'] ) || ! is_array( $data['data'] ) ) {
+			return $data;
+		}
+		$plain = static fn( $s ) => preg_replace( '/[^a-z]/', '', strtolower( remove_accents( html_entity_decode( (string) $s, ENT_QUOTES, 'UTF-8' ) ) ) );
+		foreach ( $data['data'] as &$ev ) {
+			$oid = (int) ( $ev['custom_data']['order_id'] ?? 0 );
+			if ( ! $oid || empty( $ev['user_data'] ) || ! is_array( $ev['user_data'] ) ) {
+				continue;
+			}
+			$order = wc_get_order( $oid );
+			if ( ! $order ) {
+				continue;
+			}
+			$code   = (string) $order->get_billing_state();
+			$states = WC()->countries ? (array) WC()->countries->get_states( $order->get_billing_country() ? $order->get_billing_country() : 'KE' ) : array();
+			$county = isset( $states[ $code ] ) ? $plain( preg_replace( '/\s+County$/i', '', $states[ $code ] ) ) : '';
+			if ( $county && isset( $ev['user_data']['st'] ) ) {
+				$ev['user_data']['st'] = hash( 'sha256', $county );
+			}
+			$town = 'KE30' === $code ? 'nairobi' : $plain( strtok( (string) $order->get_billing_city(), ',' ) );
+			if ( $town && isset( $ev['user_data']['ct'] ) ) {
+				$ev['user_data']['ct'] = hash( 'sha256', $town );
+			}
+			$phone = preg_replace( '/\D+/', '', (string) $order->get_billing_phone() );
+			if ( $phone && isset( $ev['user_data']['ph'] ) && empty( $ev['user_data']['external_id'] ) ) {
+				$ev['user_data']['external_id'] = hash( 'sha256', $phone );
+			}
+		}
+		unset( $ev );
+		return $data;
+	},
+	20
+);

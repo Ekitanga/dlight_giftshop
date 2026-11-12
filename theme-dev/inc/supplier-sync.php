@@ -24,13 +24,13 @@ const DL_ET_CATS = array(
 );
 
 /**
- * Elite Tech's in-stock products, as normalised URL => name. Null if any request failed.
+ * Elite Tech's in-stock products, as normalised URL => array( name, brand ). Null if any request failed.
  *
  * @return array|null
  */
 function dl_et_fetch_instock() {
 	$out = array();
-	foreach ( DL_ET_CATS as $cats ) {
+	foreach ( DL_ET_CATS as $brand => $cats ) {
 		foreach ( $cats as $cat ) {
 			for ( $page = 1; $page <= 10; $page++ ) {
 				$r = wp_remote_get(
@@ -46,7 +46,7 @@ function dl_et_fetch_instock() {
 				}
 				foreach ( $items as $it ) {
 					if ( ! empty( $it['permalink'] ) && ! empty( $it['is_in_stock'] ) ) {
-						$out[ trailingslashit( strtolower( $it['permalink'] ) ) ] = html_entity_decode( (string) $it['name'], ENT_QUOTES, 'UTF-8' );
+						$out[ trailingslashit( strtolower( $it['permalink'] ) ) ] = array( 'name' => html_entity_decode( (string) $it['name'], ENT_QUOTES, 'UTF-8' ), 'brand' => $brand );
 					}
 				}
 				if ( count( $items ) < 100 ) {
@@ -68,7 +68,7 @@ function dl_et_sync( $apply = true ) {
 	$map  = (array) get_option( 'dl_et_map', array() );
 	$prev = (int) get_option( 'dl_et_last_count', 0 );
 	$list = dl_et_fetch_instock();
-	$rep  = array( 'time' => wp_date( 'Y-m-d H:i' ), 'changed' => array(), 'new' => array(), 'note' => '' );
+	$rep  = array( 'time' => wp_date( 'Y-m-d H:i' ), 'changed' => array(), 'new' => array(), 'missing' => array(), 'note' => '' );
 	if ( null === $list ) {
 		$rep['note'] = 'Elite Tech could not be reached; nothing changed.';
 	} elseif ( count( $list ) < 200 || ( $prev && count( $list ) < 0.6 * $prev ) ) {
@@ -96,14 +96,19 @@ function dl_et_sync( $apply = true ) {
 			}
 			$rep['changed'][] = array( 'id' => (int) $pid, 'name' => $p->get_name(), 'to' => $want );
 		}
-		// In stock at Elite Tech but not linked to any of our products: new items (or re-listed ones).
+		// In stock at Elite Tech but not on our website: counted by brand every day; first-time ones listed by name.
 		$known = (array) get_option( 'dl_et_seen', array() );
-		foreach ( $list as $url => $name ) {
-			if ( empty( $mapped[ $url ] ) && empty( $known[ $url ] ) && ! preg_match( '/megir/i', $url ) ) {
-				$rep['new'][] = array( 'url' => $url, 'name' => $name );
+		foreach ( $list as $url => $it ) {
+			if ( ! empty( $mapped[ $url ] ) || preg_match( '/megir/i', $url ) ) {
+				continue;
+			}
+			$rep['missing'][ $it['brand'] ] = ( $rep['missing'][ $it['brand'] ] ?? 0 ) + 1;
+			if ( empty( $known[ $url ] ) ) {
+				$rep['new'][]  = array( 'url' => $url, 'name' => $it['name'], 'brand' => $it['brand'] );
 				$known[ $url ] = time();
 			}
 		}
+		arsort( $rep['missing'] );
 		if ( $apply ) {
 			update_option( 'dl_et_seen', $known, false );
 		}
@@ -112,8 +117,13 @@ function dl_et_sync( $apply = true ) {
 		$log   = (array) get_option( 'dl_et_sync_log', array() );
 		$log[] = array( 'time' => $rep['time'], 'changed' => count( $rep['changed'] ), 'new' => count( $rep['new'] ), 'note' => $rep['note'] );
 		update_option( 'dl_et_sync_log', array_slice( $log, -60 ), false );
-		if ( $rep['changed'] || $rep['new'] || $rep['note'] ) {
+		// Email when stock changed, something is new, something went wrong, or the "not on our website" count moved.
+		$missing = array_sum( $rep['missing'] );
+		if ( $rep['changed'] || $rep['new'] || $rep['note'] || (int) get_option( 'dl_et_missing_last', -1 ) !== $missing ) {
 			dl_et_sync_email( $rep );
+		}
+		if ( ! $rep['note'] ) {
+			update_option( 'dl_et_missing_last', $missing, false );
 		}
 	}
 	return $rep;
@@ -125,7 +135,18 @@ function dl_et_sync( $apply = true ) {
  * @param array $rep Report.
  */
 function dl_et_sync_email( $rep ) {
-	$lines = array();
+	$lines   = array();
+	$missing = array_sum( (array) ( $rep['missing'] ?? array() ) );
+	if ( ! $rep['note'] ) {
+		$lines[] = '<p style="font-size:16px"><strong>Not on our website yet: ' . $missing . ' watch' . ( 1 === $missing ? '' : 'es' ) . ' in stock at Elite Tech.</strong></p>';
+		if ( $missing ) {
+			$lines[] = '<table cellspacing="0" cellpadding="0" role="presentation" style="margin:0 0 12px">';
+			foreach ( $rep['missing'] as $brand => $n ) {
+				$lines[] = '<tr><td style="padding:2px 18px 2px 0">' . esc_html( $brand ) . '</td><td style="padding:2px 0;text-align:right"><strong>' . (int) $n . '</strong></td></tr>';
+			}
+			$lines[] = '</table><p>To add them, ask for "the Elite Tech items not on our website" to be uploaded (photos, descriptions and margin-band prices are done by hand to avoid duplicates and wrong prices).</p>';
+		}
+	}
 	if ( $rep['note'] ) {
 		$lines[] = '<p><strong>' . esc_html( $rep['note'] ) . '</strong></p>';
 	}
@@ -137,15 +158,15 @@ function dl_et_sync_email( $rep ) {
 		$lines[] = '</ul>';
 	}
 	if ( $rep['new'] ) {
-		$lines[] = '<p><strong>In stock at Elite Tech but not in our shop (new items, or a watch they re-listed under a new address):</strong></p><ul>';
-		foreach ( array_slice( $rep['new'], 0, 40 ) as $n ) {
-			$lines[] = '<li><a href="' . esc_url( $n['url'] ) . '">' . esc_html( $n['name'] ) . '</a></li>';
+		$lines[] = '<p><strong>New since the last check (' . count( $rep['new'] ) . '): new items, or a watch they re-listed under a new address:</strong></p><ul>';
+		foreach ( array_slice( $rep['new'], 0, 60 ) as $n ) {
+			$lines[] = '<li>' . esc_html( $n['brand'] ?? '' ) . ': <a href="' . esc_url( $n['url'] ) . '">' . esc_html( $n['name'] ) . '</a></li>';
 		}
 		$lines[] = '</ul>';
 	}
 	$body = implode( "\n", $lines );
 	$to   = get_option( 'admin_email' );
-	$subj = 'Elite Tech stock check ' . $rep['time'] . ': ' . count( $rep['changed'] ) . ' updated, ' . count( $rep['new'] ) . ' new';
+	$subj = 'Elite Tech stock check ' . $rep['time'] . ': ' . count( $rep['changed'] ) . ' updated, ' . count( $rep['new'] ) . ' new' . ( $rep['note'] ? '' : ', ' . $missing . ' not on our website' );
 	if ( function_exists( 'dl_send_branded_email' ) ) {
 		dl_send_branded_email( $to, $subj, 'Elite Tech stock check', $body );
 	} else {
