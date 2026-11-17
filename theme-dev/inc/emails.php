@@ -73,8 +73,14 @@ function dl_order_next_steps( $order ) {
 		$lines[] = 'Collect it at ' . DL_ADDRESS . ', Monday to Saturday, 8:30am to 7pm.';
 	} elseif ( 'nairobi' === $how ) {
 		$lines[] = 'We will call you on ' . $phone . ' to agree a delivery time to ' . dl_order_place( $order ) . '.';
+	} elseif ( 'courier' === $how && DL_NO_OFFICE === (string) $order->get_meta( '_dl_speedaf_office' ) ) {
+		// No Speedaf office near the customer: no Speedaf payment; the team arranges delivery by phone.
+		$lines[] = 'Speedaf does not have an office near ' . dl_order_place( $order ) . ', so we will call you on ' . $phone . ' to arrange the best way to get your order to you.';
 	} elseif ( 'courier' === $how ) {
-		$lines[] = 'We will send your order by Speedaf to ' . dl_order_place( $order ) . ', and share the parcel details with you on ' . $phone . '.';
+		$office  = dl_order_speedaf_office( $order );
+		$lines[] = $office
+			? 'We will send your order by Speedaf to the Speedaf ' . $office['name'] . ' office (' . $office['address'] . '), and share the parcel details with you on ' . $phone . '.'
+			: 'We will send your order by Speedaf to ' . dl_order_place( $order ) . ', and share the parcel details with you on ' . $phone . '.';
 		if ( $cod ) {
 			// Pay on delivery outside Nairobi: the delivery fee goes to Speedaf first (commitment), the product is paid on arrival.
 			$fee     = (float) $order->get_shipping_total();
@@ -98,7 +104,8 @@ const DL_SPEEDAF_PAYBILL = '4040305';
  * @return bool
  */
 function dl_order_needs_speedaf_fee( $order ) {
-	return 'courier' === dl_order_delivery( $order ) && 'cod' === $order->get_payment_method();
+	// Never for "No Speedaf office is near me": Speedaf's paybill must not be shown where Speedaf cannot deliver.
+	return 'courier' === dl_order_delivery( $order ) && 'cod' === $order->get_payment_method() && DL_NO_OFFICE !== (string) $order->get_meta( '_dl_speedaf_office' );
 }
 
 /**
@@ -219,16 +226,19 @@ add_action(
 		if ( ! $sent_to_admin || ! $order instanceof WC_Order ) {
 			return;
 		}
-		$how   = array( 'pickup' => 'Shop pickup', 'nairobi' => 'Delivery within Nairobi', 'courier' => 'Courier (Speedaf)' )[ dl_order_delivery( $order ) ] ?? $order->get_shipping_method();
-		$phone = $order->get_billing_phone();
-		$wa    = 'https://wa.me/' . preg_replace( '/\D+/', '', (string) $phone );
-		$rows  = array(
+		$how      = array( 'pickup' => 'Shop pickup', 'nairobi' => 'Delivery within Nairobi', 'courier' => 'Courier (Speedaf)' )[ dl_order_delivery( $order ) ] ?? $order->get_shipping_method();
+		$phone    = $order->get_billing_phone();
+		$wa       = 'https://wa.me/' . preg_replace( '/\D+/', '', (string) $phone );
+		$no_office = 'Courier (Speedaf)' === $how && DL_NO_OFFICE === (string) $order->get_meta( '_dl_speedaf_office' );
+		$office    = 'Courier (Speedaf)' === $how ? dl_order_speedaf_office( $order ) : null;
+		$rows     = array(
 			'Customer' => trim( $order->get_formatted_billing_full_name() ),
 			'Phone'    => $phone,
-			'Delivery' => $how,
+			'Delivery' => $no_office ? 'NO SPEEDAF OFFICE NEAR THE CUSTOMER: call them to arrange delivery' : $how,
+			'Speedaf'  => $office ? $office['name'] . ' office, ' . $office['address'] . ' (' . $office['contact'] . ', ' . $office['phone'] . ')' : '',
 			'Where'    => 'Shop pickup' === $how ? 'Collects at the shop' : dl_order_place( $order ),
 			// Cash on delivery orders count as "paid" in WooCommerce once processing, so check the method first.
-			'Payment'  => $order->get_payment_method_title() . ( 'cod' === $order->get_payment_method() ? ( 'Courier (Speedaf)' === $how ? ' (customer pays the ' . dl_order_ksh( (float) $order->get_shipping_total() ) . ' delivery fee to Speedaf first, then ' . dl_order_ksh( (float) $order->get_total() - (float) $order->get_shipping_total() ) . ' on delivery)' : ' (collect payment on delivery)' ) : ( $order->get_date_paid() ? ' (paid)' : ' (not paid yet)' ) ),
+			'Payment'  => $order->get_payment_method_title() . ( 'cod' === $order->get_payment_method() ? ( $no_office ? ' (no Speedaf fee step: agree delivery and payment with the customer)' : ( 'Courier (Speedaf)' === $how ? ' (customer pays the ' . dl_order_ksh( (float) $order->get_shipping_total() ) . ' delivery fee to Speedaf first, then ' . dl_order_ksh( (float) $order->get_total() - (float) $order->get_shipping_total() ) . ' on delivery)' : ' (collect payment on delivery)' ) ) : ( $order->get_date_paid() ? ' (paid)' : ' (not paid yet)' ) ),
 			'Note'     => $order->get_customer_note(),
 		);
 		$rows  = array_filter( $rows );
@@ -244,6 +254,9 @@ add_action(
 			$cell = esc_html( $v );
 			if ( 'Phone' === $k ) {
 				$cell = '<a href="tel:' . esc_attr( $v ) . '">' . esc_html( $v ) . '</a> &nbsp;·&nbsp; <a href="' . esc_attr( $wa ) . '">WhatsApp</a>';
+			}
+			if ( 'Delivery' === $k && $no_office ) {
+				$cell = '<strong style="color:#b3261e">' . esc_html( $v ) . '</strong>';
 			}
 			echo '<tr><th>' . esc_html( $k ) . '</th><td>' . $cell . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput -- cell escaped above.
 		}

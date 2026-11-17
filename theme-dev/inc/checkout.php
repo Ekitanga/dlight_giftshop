@@ -76,6 +76,55 @@ function dl_chosen_speedaf_fee() {
 	return (float) $rates[ $chosen ]->get_cost();
 }
 
+// The "No Speedaf office is near me" choice: the order goes through without the Speedaf payment step,
+// and the team calls the customer to arrange delivery.
+const DL_NO_OFFICE = 'none';
+
+/**
+ * Speedaf offices for the checkout list: ID => "Town (County)".
+ *
+ * @return array<string,string>
+ */
+function dl_speedaf_office_options() {
+	$states = WC()->countries ? WC()->countries->get_states( 'KE' ) : array();
+	$out    = array();
+	foreach ( dl_speedaf_offices() as $id => $o ) {
+		$out[ $id ] = $o['name'] . ' (' . str_replace( ' County', '', html_entity_decode( (string) ( $states[ $o['county'] ] ?? '' ) ) ) . ')';
+	}
+	asort( $out, SORT_NATURAL | SORT_FLAG_CASE );
+	return $out;
+}
+
+/**
+ * The Speedaf office chosen for an order, or null (none chosen, "no office near me", or an older order).
+ *
+ * @param WC_Order $order Order.
+ * @return array|null
+ */
+function dl_order_speedaf_office( $order ) {
+	$offices = dl_speedaf_offices();
+	$id      = (string) $order->get_meta( '_dl_speedaf_office' );
+	return $offices[ $id ] ?? null;
+}
+
+/**
+ * The office chosen in the checkout form right now (also during the live order-review refresh).
+ *
+ * @return string
+ */
+function dl_chosen_office() {
+	// phpcs:disable WordPress.Security.NonceVerification.Missing -- read only; WooCommerce verifies the checkout nonce.
+	if ( isset( $_POST['billing_dl_office'] ) ) {
+		return sanitize_key( wp_unslash( $_POST['billing_dl_office'] ) );
+	}
+	if ( isset( $_POST['post_data'] ) ) {
+		parse_str( wp_unslash( $_POST['post_data'] ), $form ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		return sanitize_key( (string) ( $form['billing_dl_office'] ?? '' ) );
+	}
+	// phpcs:enable
+	return '';
+}
+
 // Only Kenyan addresses, so the county list and delivery options always make sense.
 add_filter( 'woocommerce_countries_allowed_countries', static fn( $c ) => isset( $c['KE'] ) ? array( 'KE' => $c['KE'] ) : $c );
 add_filter( 'woocommerce_countries_shipping_countries', static fn( $c ) => isset( $c['KE'] ) ? array( 'KE' => $c['KE'] ) : $c );
@@ -128,6 +177,15 @@ add_filter(
 			'priority' => 60,
 			'options'  => array( '' => 'Choose your area' ) + array_combine( dl_nairobi_areas(), dl_nairobi_areas() ) + array( 'Other' => 'Other area (write it below)' ),
 		);
+		// Outside Nairobi: the Speedaf office the customer collects from (the list follows the county, in checkout.js).
+		$b['billing_dl_office']  = array(
+			'type'     => 'select',
+			'label'    => 'Speedaf office to collect from',
+			'required' => false,
+			'class'    => array( 'form-row-wide', 'dl-row-office' ),
+			'priority' => 65,
+			'options'  => array( '' => 'Choose a Speedaf office' ) + dl_speedaf_office_options() + array( DL_NO_OFFICE => 'No Speedaf office is near me' ),
+		);
 		$b['billing_city']       = array_merge( $b['billing_city'], array( 'label' => 'Town', 'placeholder' => 'Start typing your town', 'required' => false, 'class' => array( 'form-row-wide', 'dl-row-town' ), 'priority' => 70, 'custom_attributes' => array( 'list' => 'dl-towns', 'autocomplete' => 'off' ) ) );
 		$b['billing_address_1']  = array_merge( $b['billing_address_1'], array( 'label' => 'Building, street or landmark', 'required' => false, 'class' => array( 'form-row-wide', 'dl-row-address' ), 'priority' => 80 ) );
 		$fields['billing']       = $b;
@@ -168,7 +226,7 @@ function dl_delivery_options_html() {
 			$note  = 'Brought to your door. We call you to agree a delivery time.';
 		} else {
 			$title = 'Outside Nairobi via Speedaf';
-			$note  = 'Sent by Speedaf to the Speedaf office nearest you, usually in 1 to 2 days.';
+			$note  = 'Collect from the Speedaf office you choose, usually in 1 to 2 days.';
 		}
 		$input_id = 'shipping_method_0_' . sanitize_title( $id );
 		$html    .= sprintf(
@@ -224,6 +282,11 @@ add_filter(
 		}
 		$data['billing_country'] = 'KE';
 		$area                    = (string) ( $data['billing_dl_area'] ?? '' );
+		$offices                 = dl_speedaf_offices();
+		$office                  = (string) ( $data['billing_dl_office'] ?? '' );
+		if ( DL_NAIROBI !== ( $data['billing_state'] ?? '' ) && isset( $offices[ $office ] ) ) {
+			$data['billing_city'] = $offices[ $office ]['name']; // The town of the chosen Speedaf office.
+		}
 		if ( DL_NAIROBI === ( $data['billing_state'] ?? '' ) && $area && 'Other' !== $area ) {
 			$data['billing_city'] = $area . ', Nairobi';
 		} elseif ( DL_NAIROBI === ( $data['billing_state'] ?? '' ) && empty( $data['billing_city'] ) ) {
@@ -260,8 +323,15 @@ add_action(
 			if ( empty( $data['billing_dl_area'] ) ) {
 				$errors->add( 'dl_area', 'Please choose your <strong>area in Nairobi</strong>.' );
 			}
-		} elseif ( empty( $data['billing_city'] ) ) {
-			$errors->add( 'dl_town', 'Please enter your <strong>town</strong>, so we send your parcel to the right Speedaf office.' );
+		} else {
+			$office = (string) ( $data['billing_dl_office'] ?? '' );
+			if ( '' === $office ) {
+				$errors->add( 'dl_office', 'Please choose the <strong>Speedaf office</strong> you will collect from, or "No Speedaf office is near me".' );
+			} elseif ( DL_NO_OFFICE !== $office && ! isset( dl_speedaf_offices()[ $office ] ) ) {
+				$errors->add( 'dl_office', 'Please choose a <strong>Speedaf office</strong> from the list.' );
+			} elseif ( DL_NO_OFFICE === $office && empty( $data['billing_city'] ) ) {
+				$errors->add( 'dl_town', 'Please enter your <strong>town</strong>, so we can arrange delivery to you.' );
+			}
 		}
 	},
 	10,
@@ -283,6 +353,10 @@ add_action(
 		if ( ! empty( $data['billing_dl_area'] ) ) {
 			$order->update_meta_data( '_dl_area', sanitize_text_field( $data['billing_dl_area'] ) );
 		}
+		$office = (string) ( $data['billing_dl_office'] ?? '' );
+		if ( DL_NAIROBI !== ( $data['billing_state'] ?? '' ) && ! dl_is_pickup( dl_chosen_method() ) && ( DL_NO_OFFICE === $office || isset( dl_speedaf_offices()[ $office ] ) ) ) {
+			$order->update_meta_data( '_dl_speedaf_office', $office );
+		}
 	},
 	10,
 	2
@@ -293,6 +367,12 @@ add_action(
 		$area = $order->get_meta( '_dl_area' );
 		if ( $area ) {
 			echo '<p><strong>Nairobi area:</strong> ' . esc_html( $area ) . '</p>';
+		}
+		$office = (string) $order->get_meta( '_dl_speedaf_office' );
+		if ( DL_NO_OFFICE === $office ) {
+			echo '<p style="color:#b3261e"><strong>No Speedaf office near the customer.</strong> Call them to arrange delivery.</p>';
+		} elseif ( $o = dl_order_speedaf_office( $order ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition
+			echo '<p><strong>Speedaf office:</strong> ' . esc_html( $o['name'] . ' (' . $o['address'] . ')' ) . '<br>' . esc_html( $o['contact'] . ' ' . $o['phone'] ) . '</p>';
 		}
 	}
 );
@@ -319,7 +399,11 @@ add_action(
 		if ( is_checkout() && ! is_order_received_page() ) {
 			wp_enqueue_script( 'dlight-checkout', dl_asset_url( '/assets/js/checkout.js' ), array( 'jquery', 'wc-checkout' ), null, true );
 			$states = WC()->countries->get_states( 'KE' );
-			wp_add_inline_script( 'dlight-checkout', 'window.DL_TOWNS=' . wp_json_encode( dl_county_towns() ) . ';window.DL_COUNTIES=' . wp_json_encode( array_map( static fn( $n ) => str_replace( ' County', '', html_entity_decode( $n ) ), $states ) ) . ';', 'before' );
+			$offices = array();
+			foreach ( dl_speedaf_offices() as $id => $o ) {
+				$offices[] = array( $id, $o['name'], $o['county'], $o['address'] ); // Names and addresses only; staff phone numbers stay private.
+			}
+			wp_add_inline_script( 'dlight-checkout', 'window.DL_TOWNS=' . wp_json_encode( dl_county_towns() ) . ';window.DL_COUNTIES=' . wp_json_encode( array_map( static fn( $n ) => str_replace( ' County', '', html_entity_decode( $n ) ), $states ) ) . ';window.DL_OFFICES=' . wp_json_encode( $offices ) . ';window.DL_NEAR=' . wp_json_encode( dl_speedaf_nearby() ) . ';', 'before' );
 			wp_enqueue_script( 'selectWoo' );
 			wp_enqueue_style( 'select2' );
 		}
@@ -509,14 +593,15 @@ add_action(
 add_filter(
 	'woocommerce_form_field_args',
 	static function ( $args, $key ) {
-		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || ! in_array( $key, array( 'billing_dl_area', 'billing_city', 'billing_address_1' ), true ) ) {
+		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || ! in_array( $key, array( 'billing_dl_area', 'billing_dl_office', 'billing_city', 'billing_address_1' ), true ) ) {
 			return $args;
 		}
 		$customer = WC()->customer;
 		$state    = $customer && $customer->get_billing_state() ? $customer->get_billing_state() : DL_NAIROBI;
 		$pickup   = dl_is_pickup( dl_chosen_method() );
 		$nairobi  = DL_NAIROBI === $state;
-		$off      = $pickup || ( 'billing_dl_area' === $key && ! $nairobi ) || ( 'billing_city' === $key && $nairobi );
+		// Outside Nairobi the office list shows; the town and landmark only for "No Speedaf office is near me".
+		$off      = $pickup || ( 'billing_dl_area' === $key && ! $nairobi ) || ( 'billing_dl_office' === $key && $nairobi ) || ( in_array( $key, array( 'billing_city', 'billing_address_1' ), true ) && ! $nairobi && DL_NO_OFFICE !== dl_chosen_office() ) || ( 'billing_city' === $key && $nairobi );
 		if ( $off ) {
 			$args['class'][] = 'dl-off';
 		}
@@ -601,6 +686,9 @@ add_filter(
 		}
 		if ( 'cod' === $id ) {
 			$fee = dl_chosen_speedaf_fee();
+			if ( null !== $fee && DL_NO_OFFICE === dl_chosen_office() ) {
+				return 'Pay for your order by M-Pesa or cash when it arrives. Speedaf has no office near you, so we will call you to arrange delivery.';
+			}
 			if ( null !== $fee ) {
 				return 'Pay for your order by M-Pesa or cash when it arrives. To confirm a pay-on-delivery order outside Nairobi, you first pay the ' . ( $fee > 0 ? wp_strip_all_tags( wc_price( $fee ) ) . ' ' : '' ) . 'delivery fee to Speedaf. Speedaf\'s payment details appear on the next page after you place your order, and in your order email.';
 			}

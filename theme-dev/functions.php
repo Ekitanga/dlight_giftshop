@@ -20,6 +20,7 @@ define( 'DL_MAP', 'https://www.google.com/maps/search/?api=1&query=' . rawurlenc
 require DL_DIR . '/inc/data.php';
 require DL_DIR . '/inc/setup.php';
 require DL_DIR . '/inc/shop.php';
+require DL_DIR . '/inc/speedaf-offices.php';
 require DL_DIR . '/inc/checkout.php';
 require DL_DIR . '/inc/emails.php';
 require DL_DIR . '/inc/seo.php';
@@ -28,4 +29,8 @@ require DL_DIR . '/inc/images.php';
 require DL_DIR . '/inc/perf.php';
 require DL_DIR . '/inc/feed.php';
 require DL_DIR . '/inc/supplier-sync.php';
+require DL_DIR . '/inc/supplier-add.php';
 require DL_DIR . '/inc/analytics.php';
+require DL_DIR . '/inc/tiktok.php';
+require DL_DIR . '/inc/order-sources.php';
+require DL_DIR . '/inc/auto-updates.php';

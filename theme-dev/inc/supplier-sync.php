@@ -46,7 +46,13 @@ function dl_et_fetch_instock() {
 				}
 				foreach ( $items as $it ) {
 					if ( ! empty( $it['permalink'] ) && ! empty( $it['is_in_stock'] ) ) {
-						$out[ trailingslashit( strtolower( $it['permalink'] ) ) ] = array( 'name' => html_entity_decode( (string) $it['name'], ENT_QUOTES, 'UTF-8' ), 'brand' => $brand );
+						// Their selling price is kept so new watches can be priced like similar ones we sell.
+						$div = 10 ** (int) ( $it['prices']['currency_minor_unit'] ?? 2 );
+						$out[ trailingslashit( strtolower( $it['permalink'] ) ) ] = array(
+							'name'  => html_entity_decode( (string) $it['name'], ENT_QUOTES, 'UTF-8' ),
+							'brand' => $brand,
+							'price' => (int) round( (int) ( $it['prices']['price'] ?? 0 ) / $div ),
+						);
 					}
 				}
 				if ( count( $items ) < 100 ) {
@@ -75,6 +81,7 @@ function dl_et_sync( $apply = true ) {
 		$rep['note'] = 'Elite Tech returned only ' . count( $list ) . ' in-stock products (usually ' . $prev . '); nothing changed, to be safe.';
 	} else {
 		update_option( 'dl_et_last_count', count( $list ), false );
+		set_transient( 'dl_et_list', $list, 2 * DAY_IN_SECONDS ); // Used to price new watches like similar ones.
 		$mapped = array();
 		// Elite Tech sometimes lists the same watch on more than one page (option dl_et_map_extra:
 		// product ID => extra pages, photo-checked). Our watch is in stock while ANY of its pages is.
@@ -120,6 +127,10 @@ function dl_et_sync( $apply = true ) {
 		arsort( $rep['missing'] );
 		if ( $apply ) {
 			update_option( 'dl_et_seen', $known, false );
+			// New watches are checked against the shop's rules and added (inc/supplier-add.php).
+			if ( $rep['new'] && function_exists( 'dl_et_add_queue' ) ) {
+				dl_et_add_queue( $rep['new'] );
+			}
 		}
 	}
 	if ( $apply ) {
@@ -153,7 +164,7 @@ function dl_et_sync_email( $rep ) {
 			foreach ( $rep['missing'] as $brand => $n ) {
 				$lines[] = '<tr><td style="padding:2px 18px 2px 0">' . esc_html( $brand ) . '</td><td style="padding:2px 0;text-align:right"><strong>' . (int) $n . '</strong></td></tr>';
 			}
-			$lines[] = '</table><p>To add them, ask for "the Elite Tech items not on our website" to be uploaded (photos, descriptions and margin-band prices are done by hand to avoid duplicates and wrong prices).</p>';
+			$lines[] = '</table><p>New watches are added to the website automatically; a separate email lists them with links. This count also includes watches held back for you (a model we already sell, or no price rule).</p>';
 		}
 	}
 	if ( $rep['note'] ) {
@@ -167,7 +178,7 @@ function dl_et_sync_email( $rep ) {
 		$lines[] = '</ul>';
 	}
 	if ( $rep['new'] ) {
-		$lines[] = '<p><strong>New since the last check (' . count( $rep['new'] ) . '): new items, or a watch they re-listed under a new address:</strong></p><ul>';
+		$lines[] = '<p><strong>New since the last check (' . count( $rep['new'] ) . '), now being added to the website:</strong></p><ul>';
 		foreach ( array_slice( $rep['new'], 0, 60 ) as $n ) {
 			$lines[] = '<li>' . esc_html( $n['brand'] ?? '' ) . ': <a href="' . esc_url( $n['url'] ) . '">' . esc_html( $n['name'] ) . '</a></li>';
 		}
@@ -183,13 +194,20 @@ function dl_et_sync_email( $rep ) {
 	}
 }
 
-// Every day at 05:00 Nairobi time, an hour before Google Merchant Center fetches the feed (06:00),
-// so Google never advertises a watch that went out of stock overnight. Afterwards the feed caches
-// (WordPress, EasyWP Varnish, Cloudflare) are cleared so the 06:00 fetch gets fresh stock.
+// Three checks a day, Nairobi time (owner, 2026-11-17): 05:00, an hour before Google Merchant Center
+// fetches the feed (06:00); 12:30 for the morning's sales; 19:00 as the evening shopping peak
+// (7 pm to midnight) starts. When stock changed, the feed and page caches are cleared so shoppers
+// and Google see it.
+const DL_ET_SYNC_TIMES = array( '05:00', '12:30', '19:00' );
 add_action(
 	'dl_et_sync_daily',
 	static function () {
+		if ( get_transient( 'dl_et_sync_lock' ) ) {
+			return; // A check is already running.
+		}
+		set_transient( 'dl_et_sync_lock', 1, 10 * MINUTE_IN_SECONDS );
 		$rep = dl_et_sync( true );
+		delete_transient( 'dl_et_sync_lock' );
 		if ( $rep['changed'] ) {
 			delete_transient( 'dl_google_feed' );
 			if ( function_exists( 'dl_feed_xml' ) ) {
@@ -202,16 +220,28 @@ add_action(
 add_action(
 	'init',
 	static function () {
-		$at   = '05:00';
-		$next = wp_next_scheduled( 'dl_et_sync_daily' );
-		if ( $next && wp_date( 'H:i', $next ) !== $at ) {
-			wp_clear_scheduled_hook( 'dl_et_sync_daily' );
-			$next = false;
+		// One daily event per time (the time is the event's argument). Any other schedule of this hook is removed.
+		$want = array();
+		foreach ( DL_ET_SYNC_TIMES as $at ) {
+			$want[ md5( serialize( array( $at ) ) ) ] = $at; // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions
 		}
-		if ( ! $next ) {
+		$have = array();
+		foreach ( (array) _get_cron_array() as $ts => $hooks ) {
+			foreach ( (array) ( $hooks['dl_et_sync_daily'] ?? array() ) as $key => $ev ) {
+				if ( isset( $want[ $key ] ) && wp_date( 'H:i', $ts ) === $want[ $key ] && ! isset( $have[ $key ] ) ) {
+					$have[ $key ] = 1;
+				} else {
+					wp_unschedule_event( $ts, 'dl_et_sync_daily', $ev['args'] );
+				}
+			}
+		}
+		foreach ( $want as $key => $at ) {
+			if ( isset( $have[ $key ] ) ) {
+				continue;
+			}
 			$today = new DateTime( 'today ' . $at, wp_timezone() );
 			$tmrw  = new DateTime( 'tomorrow ' . $at, wp_timezone() );
-			wp_schedule_event( ( $today->getTimestamp() > time() ? $today : $tmrw )->getTimestamp(), 'daily', 'dl_et_sync_daily' );
+			wp_schedule_event( ( $today->getTimestamp() > time() ? $today : $tmrw )->getTimestamp(), 'daily', 'dl_et_sync_daily', array( $at ) );
 		}
 	}
 );

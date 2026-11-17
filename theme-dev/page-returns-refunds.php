@@ -32,7 +32,7 @@ dl_help_open( 'returns-refunds', 'Returns & Refunds', 'A clear summary of how re
 
 <h2>How to start a return</h2>
 <ol>
-	<li>Contact us by WhatsApp, phone or email with your order details and the reason.</li>
+	<li>Contact us <strong>within 3 days of receiving your order</strong> by WhatsApp, phone or email, with your order details and the reason.</li>
 	<li>Share any information we request, such as photos, videos or your receipt.</li>
 	<li>Wait for our confirmation before sending the product back.</li>
 	<li>We inspect the product where needed, and let you know the outcome.</li>

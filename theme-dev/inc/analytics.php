@@ -140,7 +140,10 @@ add_action(
 		echo '<div id="dl-ga-ev" hidden>' . $html . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- built with wp_json_encode.
 		// WhatsApp clicks (product "Order on WhatsApp", floating button, contact links).
 		$item = ( function_exists( 'is_product' ) && is_product() ) ? html_entity_decode( get_the_title( get_queried_object_id() ), ENT_QUOTES, 'UTF-8' ) : '';
-		echo '<script>document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href*=\"wa.me\"],a[href*=\"whatsapp.com\"]");if(!a)return;window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){dataLayer.push(arguments);};gtag("event","whatsapp_click",{send_to:' . wp_json_encode( dl_ga_targets() ) . ',link_location:a.className||"link",page_type:' . wp_json_encode( $item ? 'product' : 'other' ) . ',item_name:' . wp_json_encode( $item, JSON_UNESCAPED_UNICODE ) . '});},true);</script>'; // phpcs:ignore WordPress.Security.EscapeOutput
+		echo '<script>document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href*=\"wa.me\"],a[href*=\"whatsapp.com\"]");if(!a)return;window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){dataLayer.push(arguments);};gtag("event","whatsapp_click",{send_to:' . wp_json_encode( dl_ga_targets() ) . ',link_location:a.className||"link",page_type:' . wp_json_encode( $item ? 'product' : 'other' ) . ',item_name:' . wp_json_encode( $item, JSON_UNESCAPED_UNICODE ) . '});' . // phpcs:ignore WordPress.Security.EscapeOutput
+				// Meta: a WhatsApp tap is a "Contact", so ads that bring WhatsApp orders get credit.
+				'if(typeof window.fbq==="function"){fbq("track","Contact",{content_name:' . wp_json_encode( $item ? $item : 'WhatsApp', JSON_UNESCAPED_UNICODE ) . ',content_category:"WhatsApp"});}' . // phpcs:ignore WordPress.Security.EscapeOutput
+				'},true);</script>';
 	},
 	50
 );
@@ -174,6 +177,30 @@ add_action(
 		$aw    = (string) get_option( 'dl_gads_id' );
 		$label = (string) get_option( 'dl_gads_purchase_label' );
 		if ( $aw && $label ) {
+			// Enhanced conversions: the customer's own details, which Google hashes before sending, so it can match the sale to the ad click.
+			$ud    = array();
+			$email = strtolower( trim( (string) $order->get_billing_email() ) );
+			if ( is_email( $email ) ) {
+				$ud['email'] = $email;
+			}
+			$ph = function_exists( 'dl_ke_phone' ) ? (string) dl_ke_phone( $order->get_billing_phone() ) : '';
+			if ( $ph ) {
+				$ud['phone_number'] = '+' . ltrim( $ph, '+' );
+			}
+			$addr = array_filter(
+				array(
+					'first_name' => strtolower( trim( (string) $order->get_billing_first_name() ) ),
+					'last_name'  => strtolower( trim( (string) $order->get_billing_last_name() ) ),
+					'city'       => strtolower( trim( explode( ',', (string) $order->get_billing_city() )[0] ) ),
+					'country'    => (string) $order->get_billing_country(),
+				)
+			);
+			if ( ! empty( $addr['first_name'] ) && ! empty( $addr['last_name'] ) ) {
+				$ud['address'] = $addr;
+			}
+			if ( $ud ) {
+				echo '<script>window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){dataLayer.push(arguments);};gtag("set","user_data",' . wp_json_encode( $ud, JSON_UNESCAPED_UNICODE ) . ');</script>'; // phpcs:ignore WordPress.Security.EscapeOutput
+			}
 			echo dl_ga_script( 'conversion', array( 'send_to' => $aw . '/' . $label, 'value' => (float) $order->get_total(), 'currency' => $order->get_currency(), 'transaction_id' => (string) $order->get_order_number() ) ); // phpcs:ignore WordPress.Security.EscapeOutput
 		}
 		$order->update_meta_data( '_dl_ga_tracked', time() );
@@ -260,6 +287,81 @@ add_filter(
 		}
 		unset( $ev );
 		return $data;
+	},
+	20
+);
+
+/*
+ * Meta Purchase only for real sales. The Facebook plugin reports a Purchase as soon as an order is
+ * placed, including M-Pesa orders that are never paid (cancelled or still pending), so Meta learned
+ * from sales that did not happen. M-Pesa orders are now reported when the payment arrives; cash on
+ * delivery orders are still reported when placed (placing the order is the customer's commitment).
+ */
+
+/**
+ * The Facebook plugin's events tracker (found through its own hook), or null.
+ *
+ * @return object|null
+ */
+function dl_meta_tracker() {
+	global $wp_filter;
+	if ( empty( $wp_filter['woocommerce_new_order'] ) ) {
+		return null;
+	}
+	foreach ( $wp_filter['woocommerce_new_order']->callbacks as $callbacks ) {
+		foreach ( $callbacks as $cb ) {
+			if ( is_array( $cb['function'] ) && is_object( $cb['function'][0] ) && 'inject_purchase_event' === $cb['function'][1] && $cb['function'][0] instanceof WC_Facebookcommerce_EventsTracker ) {
+				return $cb['function'][0];
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * True for an M-Pesa order that has not been paid yet (its Purchase waits for the payment).
+ *
+ * @param WC_Order|false $order Order.
+ * @return bool
+ */
+function dl_meta_hold_purchase( $order ) {
+	return $order instanceof WC_Order && 'mpesa' === $order->get_payment_method() && ! $order->is_paid();
+}
+
+add_action(
+	'wp_loaded',
+	static function () {
+		$tracker = class_exists( 'WC_Facebookcommerce_EventsTracker' ) ? dl_meta_tracker() : null;
+		if ( ! $tracker ) {
+			return;
+		}
+		foreach ( array( 'woocommerce_new_order' => 10, 'woocommerce_checkout_update_order_meta' => 30, 'woocommerce_thankyou' => 40 ) as $hook => $priority ) {
+			if ( remove_action( $hook, array( $tracker, 'inject_purchase_event' ), $priority ) ) {
+				add_action(
+					$hook,
+					static function ( $order_id, $arg = null ) use ( $tracker ) {
+						$order = $arg instanceof WC_Order ? $arg : wc_get_order( $order_id );
+						if ( dl_meta_hold_purchase( $order ) ) {
+							return;
+						}
+						$tracker->inject_purchase_event( $order_id, $arg instanceof WC_Order ? $arg : null );
+					},
+					$priority,
+					2
+				);
+			}
+		}
+		// The M-Pesa payment arrives: report the Purchase now (once; the plugin keeps its own sent-flags).
+		add_action(
+			'woocommerce_order_status_changed',
+			static function ( $order_id, $from, $to, $order ) use ( $tracker ) {
+				if ( $order instanceof WC_Order && 'mpesa' === $order->get_payment_method() && in_array( $to, array( 'processing', 'completed' ), true ) ) {
+					$tracker->inject_purchase_event( $order_id, $order );
+				}
+			},
+			20,
+			4
+		);
 	},
 	20
 );

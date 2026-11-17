@@ -11,3 +11,6 @@
 *.log
 .env
 node_modules/
+
+# Speedaf office staff names and phone numbers (private, kept off the public repo; live copy is on the server)
+theme-dev/inc/speedaf-offices.php

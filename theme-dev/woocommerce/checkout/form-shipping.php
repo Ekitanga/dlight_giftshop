@@ -4,7 +4,7 @@
  * Based on WooCommerce's form-shipping.php.
  *
  * @package dlight
- * @version 3.6.0
+ * @version 11.2.0 (layout reviewed 13 Nov 2026: one delivery address, so no separate shipping form)
  */
 
 defined( 'ABSPATH' ) || exit;

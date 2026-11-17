@@ -5,7 +5,7 @@
  * removals and coupons work as usual.
  *
  * @package dlight
- * @version 11.2.0
+ * @version 11.3.0
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -46,7 +46,7 @@ do_action( 'woocommerce_before_cart' ); ?>
 						do_action( 'woocommerce_after_cart_item_name', $cart_item, $cart_item_key );
 						echo wc_get_formatted_cart_item_data( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput
 						if ( $_product->backorders_require_notification() && $_product->is_on_backorder( $cart_item['quantity'] ) ) {
-							echo wp_kses_post( apply_filters( 'woocommerce_cart_item_backorder_notification', '<p class="backorder_notification">' . esc_html__( 'Available on backorder', 'woocommerce' ) . '</p>', $product_id ) );
+							echo wp_kses_post( apply_filters( 'woocommerce_cart_item_backorder_notification', '<p class="backorder_notification">' . esc_html__( 'Available on backorder', 'woocommerce' ) . '</p>', $product_id, $cart_item, $cart_item_key ) );
 						}
 						?>
 						<span class="dl-cart__each product-price"><?php echo apply_filters( 'woocommerce_cart_item_price', WC()->cart->get_product_price( $_product ), $cart_item, $cart_item_key ); // phpcs:ignore WordPress.Security.EscapeOutput ?></span>

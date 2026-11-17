@@ -532,6 +532,13 @@ ul.wc_payment_methods { list-style: none; margin: 0 0 14px; padding: 0; border-t
 .woocommerce-checkout-review-order-table tr.fee td { color: #0d7038; font-weight: 600; }
 .dl-delivery__none { margin: 0 0 12px; color: var(--muted); }
 .dl-pickup-note { margin: 0 0 4px; padding: 10px 12px; background: var(--soft); border-left: 3px solid var(--gold); border-radius: 6px; font-size: 14.5px; }
+.dl-office-note { margin: 8px 0 0; padding: 8px 12px; background: var(--soft); border-left: 3px solid var(--gold); border-radius: 6px; font-size: 14px; line-height: 1.45; }
+.dl-office-note[hidden] { display: none; }
+.dl-office-note strong { font-weight: 700; color: #7a1f14; }
+/* "No Speedaf office is near me": always easy to spot in the office list. */
+.select2-results__option .dl-opt-none { display: block; margin: -6px; padding: 9px 6px; background: #fdf3e1; border-top: 1px solid #e6d8b8; font-weight: 700; color: #7a1f14; }
+.select2-results__option--highlighted .dl-opt-none { background: #f6e3bf; }
+#billing_dl_office option.dl-opt-none { font-weight: 700; }
 .dl-note-toggle { margin-top: 2px; }
 .dl-note-toggle summary { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; cursor: pointer; list-style: none; }
 .dl-note-toggle summary::-webkit-details-marker { display: none; }

@@ -35,7 +35,7 @@ dl_help_open( 'privacy-policy', 'Privacy Policy', 'How we collect, use and prote
 	<li>Delivery partners, so your order can reach you</li>
 	<li>Payment providers, so your payment can be processed</li>
 	<li>Website, email and analytics service providers</li>
-	<li>Advertising partners such as Meta and Google, for measuring and improving our ads</li>
+	<li>Advertising partners such as Meta, Google and TikTok, for measuring and improving our ads</li>
 	<li>Authorities, where the law requires it</li>
 </ul>
 <p>We do not sell your personal information.</p>
