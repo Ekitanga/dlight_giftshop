@@ -303,17 +303,48 @@ add_action(
 		if ( ! $done && ! $fail ) {
 			return;
 		}
-		$h    = dl_upd_health();
-		$log  = (array) get_site_option( 'dl_upd_log', array() );
+		// Check the shop a few minutes later, not in the same moment: right after files are replaced the
+		// server can still serve a mix of old and new code for a few seconds, which gave false 500 alarms.
+		$p         = (array) get_site_option( 'dl_upd_pending', array() );
+		$p['done'] = array_merge( (array) ( $p['done'] ?? array() ), $done );
+		$p['fail'] = array_merge( (array) ( $p['fail'] ?? array() ), $fail );
+		$p['try']  = 0;
+		update_site_option( 'dl_upd_pending', $p );
+		wp_clear_scheduled_hook( 'dl_upd_after_check' );
+		wp_schedule_single_event( time() + 3 * MINUTE_IN_SECONDS, 'dl_upd_after_check' );
+	}
+);
+
+// The delayed shop check: on a failure, look again 10 minutes later before raising the alarm.
+add_action(
+	'dl_upd_after_check',
+	static function () {
+		$p = (array) get_site_option( 'dl_upd_pending', array() );
+		if ( empty( $p['done'] ) && empty( $p['fail'] ) ) {
+			return;
+		}
+		$h = dl_upd_health();
+		if ( ! $h['ok'] && (int) ( $p['try'] ?? 0 ) < 1 ) {
+			$p['try']        = 1;
+			$p['first_fail'] = $h['lines'];
+			update_site_option( 'dl_upd_pending', $p );
+			wp_schedule_single_event( time() + 10 * MINUTE_IN_SECONDS, 'dl_upd_after_check' );
+			return;
+		}
+		delete_site_option( 'dl_upd_pending' );
+		$done  = (array) ( $p['done'] ?? array() );
+		$fail  = (array) ( $p['fail'] ?? array() );
+		$log   = (array) get_site_option( 'dl_upd_log', array() );
 		$log[] = array( 'time' => wp_date( 'Y-m-d H:i' ), 'done' => $done, 'fail' => $fail, 'ok' => $h['ok'] );
 		update_site_option( 'dl_upd_log', array_slice( $log, -40 ) );
 		$subj = $h['ok'] && ! $fail ? 'Website updated (' . count( $done ) . '): all checks passed' : 'ACTION NEEDED: website update problem';
 		dl_upd_email(
 			$subj,
 			array(
-				'Installed after review'                        => $done,
+				'Installed after review'                              => $done,
 				'Failed (WordPress kept or restored the old version)' => $fail,
-				'Shop checks after updating'                    => $h['lines'],
+				'Shop checks after updating'                          => $h['lines'],
+				'First check (10 minutes earlier) also failed'        => $h['ok'] ? array() : (array) ( $p['first_fail'] ?? array() ),
 			)
 		);
 	}
