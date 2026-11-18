@@ -403,6 +403,12 @@ add_action(
 	'parse_request',
 	static function () {
 		$path = (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '', PHP_URL_PATH ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		// /tiktok-products: same CSV at an address the host's cache does not keep (it stores any *.csv for hours).
+		if ( '/tiktok-products' === untrailingslashit( $path ) ) {
+			$path = '/tiktok-feed.csv';
+			header( 'X-Accel-Expires: 0' );
+			header( 'Pragma: no-cache' );
+		}
 		if ( ! in_array( $path, array( '/tiktok-feed.xml', '/tiktok-feed.csv' ), true ) || ! function_exists( 'dl_feed_xml' ) ) {
 			return;
 		}
@@ -415,7 +421,7 @@ add_action(
 		$out    = $is_csv ? dl_tt_feed_csv() : dl_tt_feed_xml();
 		status_header( 200 );
 		header( 'Content-Type: ' . ( $is_csv ? 'text/csv' : 'application/xml' ) . '; charset=UTF-8' );
-		header( 'Cache-Control: no-store, max-age=0' ); // Always from the site (fresh stock, and every fetch is logged).
+		header( 'Cache-Control: private, no-store, no-cache, max-age=0' ); // Always from the site (fresh stock, and every fetch is logged).
 		header( 'Content-Length: ' . strlen( $out ) );
 		header( 'X-Robots-Tag: noindex' );
 		if ( 'HEAD' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
@@ -491,7 +497,7 @@ function dl_tt_settings_page() {
 			<table class="form-table">
 				<tr><th>Pixel ID</th><td><input name="dl_tt_pixel" value="<?php echo esc_attr( $px ); ?>" class="regular-text" placeholder="e.g. D1ABCDEFGHIJ2KLMNOPQ"><p class="description">TikTok Ads Manager &gt; Tools &gt; Events &gt; Web events &gt; your pixel. Status: <strong><?php echo dl_tt_pixel() ? 'on' : 'off'; ?></strong></p></td></tr>
 				<tr><th>Events API access token</th><td><input name="dl_tt_token" value="" class="regular-text" autocomplete="off" placeholder="<?php echo $tok ? esc_attr( 'saved (ends …' . substr( $tok, -4 ) . ')' ) : 'paste token'; ?>"> <?php if ( $tok ) : ?><label><input type="checkbox" name="dl_tt_token_clear" value="1"> remove</label><?php endif; ?><p class="description">Pixel &gt; Settings &gt; Events API &gt; Generate access token. Lets the website report paid sales directly to TikTok.</p></td></tr>
-				<tr><th>Catalogue feed</th><td><code><?php echo esc_html( home_url( '/tiktok-feed.csv' ) ); ?></code><p class="description">Catalog Manager &gt; Add products &gt; Data feed &gt; Scheduled, daily.</p></td></tr>
+				<tr><th>Catalogue feed</th><td><code><?php echo esc_html( home_url( '/tiktok-products' ) ); ?></code><p class="description">Catalog Manager &gt; Add products &gt; Data feed &gt; Scheduled, daily.</p></td></tr>
 			</table>
 			<p><button class="button button-primary" name="dl_tt_save" value="1">Save</button></p>
 			<?php if ( dl_tt_pixel() && $tok ) : ?>
